@@ -1,0 +1,21 @@
+# binaries
+knowme
+knowme.exe
+/bin/
+/dist/
+
+# environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
