@@ -2,7 +2,7 @@ package telegram
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -13,19 +13,21 @@ import (
 	"github.com/jahangard/KnowMe/internal/application/profileservice"
 	"github.com/jahangard/KnowMe/internal/application/roadmap"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
+	store "github.com/jahangard/KnowMe/internal/platform/database"
+	"gorm.io/gorm"
 )
 
 type Bot struct {
 	api        *tgbotapi.BotAPI
 	timeout    time.Duration
-	db         *sql.DB
+	db         *gorm.DB
 	logger     *slog.Logger
 	roadmap    *roadmap.Service
 	testEngine *testengine.Service
 	profile    *profileservice.Service
 }
 
-func NewBot(token string, timeout time.Duration, db *sql.DB, logger *slog.Logger) (*Bot, error) {
+func NewBot(token string, timeout time.Duration, db *gorm.DB, logger *slog.Logger) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, fmt.Errorf("create telegram bot: %w", err)
@@ -354,28 +356,46 @@ func normalizeDigits(value string) string {
 }
 
 func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, error) {
-	const query = "SET NOCOUNT ON; " +
-		"UPDATE dbo.Users SET Username = @Username, LastSeenAt = SYSUTCDATETIME() WHERE TelegramUserId = @TelegramUserId; " +
-		"IF @@ROWCOUNT = 0 BEGIN " +
-		"INSERT INTO dbo.Users (TelegramUserId, Username, FirstSeenAt, LastSeenAt) " +
-		"VALUES (@TelegramUserId, @Username, SYSUTCDATETIME(), SYSUTCDATETIME()); END; " +
-		"SELECT Id FROM dbo.Users WHERE TelegramUserId = @TelegramUserId;"
+	now := time.Now().UTC()
 
-	var username any
+	var username *string
 	if tgUser.UserName != "" {
-		username = tgUser.UserName
+		value := tgUser.UserName
+		username = &value
 	}
 
-	var id int64
-	if err := b.db.QueryRowContext(
-		ctx,
-		query,
-		sql.Named("TelegramUserId", tgUser.ID),
-		sql.Named("Username", username),
-	).Scan(&id); err != nil {
-		return 0, fmt.Errorf("ensure user: %w", err)
+	var user store.User
+	err := b.db.WithContext(ctx).
+		Where("TelegramUserId = ?", tgUser.ID).
+		First(&user).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		user = store.User{
+			TelegramUserID: tgUser.ID,
+			Username:       username,
+			FirstSeenAt:    now,
+			LastSeenAt:     now,
+		}
+		if err := b.db.WithContext(ctx).Create(&user).Error; err != nil {
+			return 0, fmt.Errorf("create telegram user: %w", err)
+		}
+		return user.ID, nil
 	}
-	return id, nil
+	if err != nil {
+		return 0, fmt.Errorf("load telegram user: %w", err)
+	}
+
+	if err := b.db.WithContext(ctx).
+		Model(&store.User{}).
+		Where("Id = ?", user.ID).
+		Updates(map[string]any{
+			"Username":   username,
+			"LastSeenAt": now,
+		}).Error; err != nil {
+		return 0, fmt.Errorf("update telegram user: %w", err)
+	}
+
+	return user.ID, nil
 }
 
 func (b *Bot) sendHome(chatID int64) error {
