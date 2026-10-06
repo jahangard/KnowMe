@@ -1,0 +1,9 @@
+SET XACT_ABORT ON;
+BEGIN TRANSACTION;
+
+IF COL_LENGTH('dbo.UserProfiles', 'PendingField') IS NULL
+BEGIN
+    ALTER TABLE dbo.UserProfiles ADD PendingField NVARCHAR(50) NULL;
+END;
+
+COMMIT TRANSACTION;
