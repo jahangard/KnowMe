@@ -77,6 +77,17 @@ func (s *Service) SetGender(ctx context.Context, userID int64, gender string) er
 	return nil
 }
 
+func (s *Service) BeginAgeCapture(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE dbo.UserProfiles SET PendingField='age', UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		sql.Named("UserId", userID),
+	)
+	if err != nil {
+		return fmt.Errorf("begin age capture: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) SetAge(ctx context.Context, userID int64, age int) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE dbo.UserProfiles SET Age=@Age, PendingField=NULL, ProfileCompletionLevel=2, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
