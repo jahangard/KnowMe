@@ -15,9 +15,9 @@ type Profile struct {
 	Gender                 *string
 	Mobile                 *string
 	ProfileCompletionLevel int
-	PendingField            *string
-	NamePrompted            bool
-	MobilePrompted          bool
+	PendingField           *string
+	NamePrompted           bool
+	MobilePrompted         bool
 }
 
 type Service struct {
@@ -57,9 +57,9 @@ func (s *Service) Get(ctx context.Context, userID int64) (*Profile, error) {
 		Gender:                 row.Gender,
 		Mobile:                 row.Mobile,
 		ProfileCompletionLevel: row.ProfileCompletionLevel,
-		PendingField:            row.PendingField,
-		NamePrompted:            row.NamePrompted,
-		MobilePrompted:          row.MobilePrompted,
+		PendingField:           row.PendingField,
+		NamePrompted:           row.NamePrompted,
+		MobilePrompted:         row.MobilePrompted,
 	}, nil
 }
 
@@ -94,9 +94,9 @@ func (s *Service) BeginNameCapture(ctx context.Context, userID int64) error {
 
 func (s *Service) SetName(ctx context.Context, userID int64, name string) error {
 	return s.update(ctx, userID, map[string]any{
-		"Name":                   name,
-		"PendingField":           nil,
-		"NamePrompted":           true,
+		"Name":         name,
+		"PendingField": nil,
+		"NamePrompted": true,
 		"ProfileCompletionLevel": gorm.Expr(
 			"CASE WHEN ProfileCompletionLevel < ? THEN ? ELSE ProfileCompletionLevel END",
 			3, 3,
@@ -113,9 +113,9 @@ func (s *Service) BeginMobileCapture(ctx context.Context, userID int64) error {
 
 func (s *Service) SetMobile(ctx context.Context, userID int64, mobile string) error {
 	return s.update(ctx, userID, map[string]any{
-		"Mobile":                 mobile,
-		"PendingField":           nil,
-		"MobilePrompted":         true,
+		"Mobile":         mobile,
+		"PendingField":   nil,
+		"MobilePrompted": true,
 		"ProfileCompletionLevel": gorm.Expr(
 			"CASE WHEN ProfileCompletionLevel < ? THEN ? ELSE ProfileCompletionLevel END",
 			4, 4,
