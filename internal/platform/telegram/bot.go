@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -58,6 +60,9 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) error {
+	if update.CallbackQuery != nil {
+		return b.handleCallback(ctx, update.CallbackQuery)
+	}
 	if update.Message == nil || update.Message.From == nil {
 		return nil
 	}
@@ -69,12 +74,52 @@ func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) error {
 
 	switch update.Message.Command() {
 	case "start":
-		return b.sendWelcome(update.Message.Chat.ID)
+		return b.sendHome(update.Message.Chat.ID)
 	case "roadmap":
 		return b.sendRoadmap(ctx, userID, update.Message.Chat.ID)
 	default:
-		return b.sendText(update.Message.Chat.ID, "فعلاً دو دستور آماده است: /start و /roadmap")
+		return b.sendHome(update.Message.Chat.ID)
 	}
+}
+
+func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQuery) error {
+	if callback.From == nil || callback.Message == nil {
+		return nil
+	}
+
+	userID, err := b.ensureUser(ctx, callback.From)
+	if err != nil {
+		return err
+	}
+
+	answer := tgbotapi.NewCallback(callback.ID, "")
+	if _, err := b.api.Request(answer); err != nil {
+		b.logger.Warn("callback answer failed", "error", err)
+	}
+
+	chatID := callback.Message.Chat.ID
+
+	switch callback.Data {
+	case "menu:home":
+		return b.sendHome(chatID)
+	case "menu:roadmap":
+		return b.sendRoadmap(ctx, userID, chatID)
+	case "menu:profile":
+		return b.sendHTML(chatID, profileText(), homeKeyboard())
+	case "menu:about":
+		return b.sendHTML(chatID, aboutText(), homeKeyboard())
+	}
+
+	if strings.HasPrefix(callback.Data, "test:start:") {
+		rawID := strings.TrimPrefix(callback.Data, "test:start:")
+		testID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid test id: %w", err)
+		}
+		return b.sendTestSelected(chatID, testID)
+	}
+
+	return nil
 }
 
 func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, error) {
@@ -102,11 +147,8 @@ func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, err
 	return id, nil
 }
 
-func (b *Bot) sendWelcome(chatID int64) error {
-	return b.sendText(chatID,
-		"به KnowMe خوش اومدی.\n\n"+
-			"اینجا تست‌ها رو یکی‌یکی انجام می‌دی و سیستم کم‌کم شناخت بهتری ازت پیدا می‌کنه.\n\n"+
-			"برای شروع نقشه راه: /roadmap")
+func (b *Bot) sendHome(chatID int64) error {
+	return b.sendHTML(chatID, homeText(), homeKeyboard())
 }
 
 func (b *Bot) sendRoadmap(ctx context.Context, userID, chatID int64) error {
@@ -115,17 +157,34 @@ func (b *Bot) sendRoadmap(ctx context.Context, userID, chatID int64) error {
 		return err
 	}
 	if rec == nil {
-		return b.sendText(chatID, "فعلاً تست جدیدی برای نقشه راه باقی نمونده.")
+		return b.sendHTML(
+			chatID,
+			"<b>🎉 مسیر فعلی کامل شد</b>\n\nفعلاً تست جدیدی برای پیشنهاد ندارم. بعداً مسیرهای بیشتری اضافه می‌کنیم.",
+			homeKeyboard(),
+		)
 	}
 
-	return b.sendText(chatID, fmt.Sprintf(
-		"تست پیشنهادی بعدی برای تو:\n%s\n\nTest ID: %d",
-		rec.Title,
-		rec.TestID,
-	))
+	return b.sendHTML(chatID, roadmapText(rec.Title), roadmapKeyboard(rec.TestID))
 }
 
-func (b *Bot) sendText(chatID int64, text string) error {
-	_, err := b.api.Send(tgbotapi.NewMessage(chatID, text))
+func (b *Bot) sendTestSelected(chatID, testID int64) error {
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ برگشت به نقشه راه", "menu:roadmap"),
+		),
+	)
+	return b.sendHTML(
+		chatID,
+		testSelectedText()+fmt.Sprintf("\n\n<code>Test #%d</code>", testID),
+		keyboard,
+	)
+}
+
+func (b *Bot) sendHTML(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) error {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = parseModeHTML
+	msg.DisableWebPagePreview = true
+	msg.ReplyMarkup = keyboard
+	_, err := b.api.Send(msg)
 	return err
 }
