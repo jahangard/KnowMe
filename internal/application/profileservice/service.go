@@ -125,6 +125,42 @@ func (s *Service) SetName(ctx context.Context, userID int64, name string) error 
 	return nil
 }
 
+func (s *Service) BeginMobileCapture(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE dbo.UserProfiles SET PendingField='mobile', MobilePrompted=1, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		sql.Named("UserId", userID),
+	)
+	if err != nil {
+		return fmt.Errorf("begin mobile capture: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) SetMobile(ctx context.Context, userID int64, mobile string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE dbo.UserProfiles SET Mobile=@Mobile, PendingField=NULL, MobilePrompted=1, "+
+			"ProfileCompletionLevel=CASE WHEN ProfileCompletionLevel < 4 THEN 4 ELSE ProfileCompletionLevel END, "+
+			"UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		sql.Named("Mobile", mobile),
+		sql.Named("UserId", userID),
+	)
+	if err != nil {
+		return fmt.Errorf("set mobile: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) SkipMobile(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE dbo.UserProfiles SET PendingField=NULL, MobilePrompted=1, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		sql.Named("UserId", userID),
+	)
+	if err != nil {
+		return fmt.Errorf("skip mobile: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) ClearPending(ctx context.Context, userID int64) error {
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE dbo.UserProfiles SET PendingField=NULL, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
