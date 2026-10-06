@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/jahangard/KnowMe/internal/application/profileservice"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
 )
 
@@ -29,6 +30,55 @@ func homeKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("✨ درباره KnowMe", "menu:about"),
 		),
 	)
+}
+
+func genderPromptText() string {
+	return "<b>👋 شروع خیلی کوتاه</b>\n\n" +
+		"برای اینکه پیشنهادها کمی بهتر شخصی‌سازی بشن، فقط دو چیز رو اول می‌پرسم.\n\n" +
+		"<b>جنسیتت رو انتخاب کن:</b>"
+}
+
+func genderKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👨 مرد", "profile:gender:male"),
+			tgbotapi.NewInlineKeyboardButtonData("👩 زن", "profile:gender:female"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("ترجیح می‌دم نگم", "profile:gender:prefer_not_say"),
+		),
+	)
+}
+
+func agePromptText() string {
+	return "<b>🎂 فقط یک مورد دیگه</b>\n\n" +
+		"سنت رو فقط به‌صورت عدد بفرست.\n" +
+		"مثلاً: <code>32</code>\n\n" +
+		"<i>بعد از این مستقیم وارد تست‌ها می‌شی.</i>"
+}
+
+func invalidAgeText() string {
+	return "<b>سن رو به‌صورت عدد بفرست</b>\n\nمثلاً: <code>32</code>"
+}
+
+func namePromptText() string {
+	return "<b>✨ یه قدم کوچیک برای شخصی‌تر شدن</b>\n\n" +
+		"حالا که اولین تستت رو انجام دادی، دوست داری با چه اسمی صدات کنم؟\n\n" +
+		"<i>فقط اسم یا لقبی که خودت دوست داری کافیه.</i>"
+}
+
+func namePromptKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("فعلاً نه", "profile:name:skip"),
+		),
+	)
+}
+
+func emptyInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
+	}
 }
 
 func roadmapText(title string) string {
@@ -54,10 +104,55 @@ func roadmapKeyboard(testID int64) tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
-func profileText() string {
+func profileText(p *profileservice.Profile, completedTests int) string {
+	name := "ثبت نشده"
+	if p.Name != nil && strings.TrimSpace(*p.Name) != "" {
+		name = htmlEscape(*p.Name)
+	}
+
+	age := "ثبت نشده"
+	if p.Age != nil {
+		age = fmt.Sprintf("%d سال", *p.Age)
+	}
+
+	gender := "ثبت نشده"
+	if p.Gender != nil {
+		switch *p.Gender {
+		case "male":
+			gender = "مرد"
+		case "female":
+			gender = "زن"
+		case "prefer_not_say":
+			gender = "ترجیح داده نشده"
+		default:
+			gender = htmlEscape(*p.Gender)
+		}
+	}
+
 	return "<b>👤 پروفایل KnowMe</b>\n\n" +
-		"پروفایل تو به‌مرور و با انجام تست‌ها کامل می‌شه؛ بدون فرم ثبت‌نام طولانی.\n\n" +
-		"فعلاً از اطلاعات پایه شروع می‌کنیم و بقیه چیزها رو فقط وقتی لازم باشه می‌پرسیم."
+		"نام: <b>" + name + "</b>\n" +
+		"سن: <b>" + age + "</b>\n" +
+		"جنسیت: <b>" + gender + "</b>\n" +
+		fmt.Sprintf("تست‌های کامل‌شده: <b>%d</b>\n\n", completedTests) +
+		"<i>پروفایل به‌مرور کامل می‌شه؛ لازم نیست همه اطلاعات رو یک‌جا وارد کنی.</i>"
+}
+
+func profileKeyboard(p *profileservice.Profile) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
+	if p.Name == nil || strings.TrimSpace(*p.Name) == "" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("✍️ ثبت اسم", "profile:name:start"),
+		))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧭 نقشه راه", "menu:roadmap"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
+		),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }
 
 func aboutText() string {
