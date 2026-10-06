@@ -27,7 +27,13 @@ jobs:
 
       - name: Format check
         run: |
-          test -z "$(gofmt -l .)"
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            echo "These Go files need gofmt:"
+            echo "$files"
+            exit 1
+          fi
 
       - name: Test and compile
+        if: always()
         run: go test ./...
