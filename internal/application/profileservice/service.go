@@ -94,9 +94,9 @@ func (s *Service) BeginNameCapture(ctx context.Context, userID int64) error {
 
 func (s *Service) SetName(ctx context.Context, userID int64, name string) error {
 	return s.update(ctx, userID, map[string]any{
-		"Name":         name,
-		"PendingField": nil,
-		"NamePrompted": true,
+		"Name":                   name,
+		"PendingField":           nil,
+		"NamePrompted":           true,
 		"ProfileCompletionLevel": gorm.Expr(
 			"CASE WHEN ProfileCompletionLevel < ? THEN ? ELSE ProfileCompletionLevel END",
 			3, 3,
@@ -113,9 +113,9 @@ func (s *Service) BeginMobileCapture(ctx context.Context, userID int64) error {
 
 func (s *Service) SetMobile(ctx context.Context, userID int64, mobile string) error {
 	return s.update(ctx, userID, map[string]any{
-		"Mobile":         mobile,
-		"PendingField":   nil,
-		"MobilePrompted": true,
+		"Mobile":                 mobile,
+		"PendingField":           nil,
+		"MobilePrompted":         true,
 		"ProfileCompletionLevel": gorm.Expr(
 			"CASE WHEN ProfileCompletionLevel < ? THEN ? ELSE ProfileCompletionLevel END",
 			4, 4,
