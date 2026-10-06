@@ -56,27 +56,40 @@ func main() {
 	logger.Info(
 		"KnowMe process starting",
 		"environment", cfg.Environment,
+		"db_provider", cfg.DBProvider,
 		"log_file", cfg.LogFile,
 	)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db, err := database.OpenSQLServer(ctx, cfg.SQLServerDSN)
+	provider, err := database.ParseProvider(cfg.DBProvider)
 	if err != nil {
-		logger.Error("database connection failed", "error", err)
+		logger.Error("database provider configuration failed", "error", err)
+		os.Exit(1)
+	}
+
+	db, err := database.Open(ctx, provider, cfg.SQLServerDSN, cfg.SQLitePath)
+	if err != nil {
+		logger.Error("database connection failed", "provider", provider, "error", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	logger.Info("database connection established", "provider", "sqlserver")
+	logger.Info("database connection established", "provider", provider)
 
-	bot, err := telegramplatform.NewBot(cfg.TelegramBotToken, cfg.TelegramPollTimeout, db, logger)
+	if err := database.MigrateAndSeed(ctx, db); err != nil {
+		logger.Error("database migration failed", "provider", provider, "error", err)
+		os.Exit(1)
+	}
+	logger.Info("database migration complete", "provider", provider)
+
+	bot, err := telegramplatform.NewBot(cfg.TelegramBotToken, cfg.TelegramPollTimeout, db.Gorm, logger)
 	if err != nil {
 		logger.Error("telegram bot initialization failed", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("KnowMe started", "environment", cfg.Environment)
+	logger.Info("KnowMe started", "environment", cfg.Environment, "db_provider", provider)
 	if err := bot.Run(ctx); err != nil {
 		logger.Error("KnowMe stopped with error", "error", err)
 		os.Exit(1)
