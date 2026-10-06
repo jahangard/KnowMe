@@ -1,0 +1,132 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS Users (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    TelegramUserId INTEGER NOT NULL UNIQUE,
+    Username TEXT NULL,
+    FirstSeenAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    LastSeenAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS UserProfiles (
+    UserId INTEGER PRIMARY KEY,
+    Name TEXT NULL,
+    Age INTEGER NULL,
+    Gender TEXT NULL,
+    Mobile TEXT NULL,
+    ProfileCompletionLevel INTEGER NOT NULL DEFAULT 0,
+    PendingField TEXT NULL,
+    NamePrompted INTEGER NOT NULL DEFAULT 0,
+    MobilePrompted INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (UserId) REFERENCES Users(Id)
+);
+
+CREATE TABLE IF NOT EXISTS TestCategories (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    Code TEXT NOT NULL UNIQUE,
+    Title TEXT NOT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    IsActive INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS Tests (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CategoryId INTEGER NOT NULL,
+    Code TEXT NOT NULL UNIQUE,
+    Title TEXT NOT NULL,
+    Description TEXT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    IsActive INTEGER NOT NULL DEFAULT 1,
+    CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CategoryId) REFERENCES TestCategories(Id)
+);
+
+CREATE TABLE IF NOT EXISTS Questions (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    TestId INTEGER NOT NULL,
+    Text TEXT NOT NULL,
+    "Order" INTEGER NOT NULL,
+    QuestionType TEXT NOT NULL,
+    IsActive INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (TestId) REFERENCES Tests(Id),
+    UNIQUE (TestId, "Order")
+);
+
+CREATE TABLE IF NOT EXISTS QuestionOptions (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    QuestionId INTEGER NOT NULL,
+    Text TEXT NOT NULL,
+    "Order" INTEGER NOT NULL,
+    Score REAL NULL,
+    TraitKey TEXT NULL,
+    FOREIGN KEY (QuestionId) REFERENCES Questions(Id),
+    UNIQUE (QuestionId, "Order")
+);
+
+CREATE TABLE IF NOT EXISTS TestSessions (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    UserId INTEGER NOT NULL,
+    TestId INTEGER NOT NULL,
+    CurrentQuestionId INTEGER NULL,
+    Status TEXT NOT NULL,
+    StartedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CompletedAt TEXT NULL,
+    FOREIGN KEY (UserId) REFERENCES Users(Id),
+    FOREIGN KEY (TestId) REFERENCES Tests(Id),
+    FOREIGN KEY (CurrentQuestionId) REFERENCES Questions(Id)
+);
+
+CREATE TABLE IF NOT EXISTS TestAnswers (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId INTEGER NOT NULL,
+    QuestionId INTEGER NOT NULL,
+    OptionId INTEGER NULL,
+    AnswerValue TEXT NULL,
+    ResponseTimeMs INTEGER NULL,
+    AnsweredAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (SessionId) REFERENCES TestSessions(Id),
+    FOREIGN KEY (QuestionId) REFERENCES Questions(Id),
+    FOREIGN KEY (OptionId) REFERENCES QuestionOptions(Id),
+    UNIQUE (SessionId, QuestionId)
+);
+
+CREATE TABLE IF NOT EXISTS TestResults (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId INTEGER NOT NULL UNIQUE,
+    ResultType TEXT NOT NULL,
+    ScoreJson TEXT NULL,
+    Summary TEXT NULL,
+    ShareImageUrl TEXT NULL,
+    CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (SessionId) REFERENCES TestSessions(Id),
+    CHECK (ScoreJson IS NULL OR json_valid(ScoreJson))
+);
+
+CREATE TABLE IF NOT EXISTS UserTraits (
+    UserId INTEGER NOT NULL,
+    TraitKey TEXT NOT NULL,
+    Score REAL NOT NULL,
+    Confidence REAL NOT NULL,
+    UpdatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (UserId, TraitKey),
+    FOREIGN KEY (UserId) REFERENCES Users(Id)
+);
+
+CREATE TABLE IF NOT EXISTS UserEvents (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    UserId INTEGER NOT NULL,
+    EventType TEXT NOT NULL,
+    TestId INTEGER NULL,
+    QuestionId INTEGER NULL,
+    MetadataJson TEXT NULL,
+    CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (UserId) REFERENCES Users(Id),
+    FOREIGN KEY (TestId) REFERENCES Tests(Id),
+    FOREIGN KEY (QuestionId) REFERENCES Questions(Id),
+    CHECK (MetadataJson IS NULL OR json_valid(MetadataJson))
+);
+
+CREATE INDEX IF NOT EXISTS IX_TestSessions_User_Status ON TestSessions(UserId, Status);
+CREATE INDEX IF NOT EXISTS IX_TestAnswers_Session ON TestAnswers(SessionId, QuestionId);
+CREATE INDEX IF NOT EXISTS IX_UserEvents_User_CreatedAt ON UserEvents(UserId, CreatedAt DESC);
