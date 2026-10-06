@@ -15,7 +15,9 @@ type Config struct {
 	Environment         string
 	TelegramBotToken    string
 	TelegramPollTimeout time.Duration
+	DBProvider          string
 	SQLServerDSN        string
+	SQLitePath          string
 	LogLevel            slog.Level
 	LogFile             string
 	LogMaxSizeMB        int
@@ -25,14 +27,20 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	// Load .env for local development. Existing OS environment variables
-	// keep priority because godotenv.Load does not overwrite them.
 	_ = godotenv.Load()
 
+	environment := valueOrDefault("APP_ENV", "development")
+	providerDefault := "sqlserver"
+	if strings.EqualFold(environment, "development") {
+		providerDefault = "sqlite"
+	}
+
 	cfg := Config{
-		Environment:         valueOrDefault("APP_ENV", "development"),
+		Environment:         environment,
 		TelegramBotToken:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
+		DBProvider:          strings.ToLower(valueOrDefault("DB_PROVIDER", providerDefault)),
 		SQLServerDSN:        strings.TrimSpace(os.Getenv("SQLSERVER_DSN")),
+		SQLitePath:          valueOrDefault("SQLITE_PATH", "data/knowme.db"),
 		TelegramPollTimeout: 30 * time.Second,
 		LogLevel:            parseLogLevel(valueOrDefault("LOG_LEVEL", "info")),
 		LogFile:             valueOrDefault("LOG_FILE", "logs/knowme.log"),
@@ -62,8 +70,18 @@ func Load() (Config, error) {
 	if cfg.TelegramBotToken == "" {
 		return Config{}, fmt.Errorf("TELEGRAM_BOT_TOKEN is required")
 	}
-	if cfg.SQLServerDSN == "" {
-		return Config{}, fmt.Errorf("SQLSERVER_DSN is required")
+
+	switch cfg.DBProvider {
+	case "sqlite":
+		if strings.TrimSpace(cfg.SQLitePath) == "" {
+			return Config{}, fmt.Errorf("SQLITE_PATH is required when DB_PROVIDER=sqlite")
+		}
+	case "sqlserver":
+		if cfg.SQLServerDSN == "" {
+			return Config{}, fmt.Errorf("SQLSERVER_DSN is required when DB_PROVIDER=sqlserver")
+		}
+	default:
+		return Config{}, fmt.Errorf("DB_PROVIDER must be sqlite or sqlserver")
 	}
 
 	return cfg, nil
