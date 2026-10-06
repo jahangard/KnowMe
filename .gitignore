@@ -9,6 +9,12 @@ knowme.exe
 .env.*
 !.env.example
 
+# local development database
+/data/
+*.db
+*.db-shm
+*.db-wal
+
 # IDE
 .idea/
 .vscode/
