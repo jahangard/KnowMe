@@ -75,6 +75,23 @@ func namePromptKeyboard() tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
+func mobilePromptText() string {
+	return "<b>📱 یک گزینه اختیاری</b>\n\n" +
+		"اگر دوست داری شماره موبایلت هم روی پروفایل ذخیره بشه، می‌تونی با دکمه پایین شماره خودت رو مستقیم از تلگرام بفرستی.\n\n" +
+		"<i>این مرحله کاملاً اختیاریه و شماره‌ات داخل پیام پروفایل نمایش داده نمی‌شه.</i>"
+}
+
+func mobileReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
+	return tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButtonContact("📱 ارسال شماره من"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("فعلاً نه"),
+		),
+	)
+}
+
 func emptyInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.InlineKeyboardMarkup{
 		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
@@ -129,19 +146,30 @@ func profileText(p *profileservice.Profile, completedTests int) string {
 		}
 	}
 
+	mobile := "ثبت نشده"
+	if p.Mobile != nil && strings.TrimSpace(*p.Mobile) != "" {
+		mobile = "ثبت شده ✅"
+	}
+
 	return "<b>👤 پروفایل KnowMe</b>\n\n" +
 		"نام: <b>" + name + "</b>\n" +
 		"سن: <b>" + age + "</b>\n" +
 		"جنسیت: <b>" + gender + "</b>\n" +
+		"موبایل: <b>" + mobile + "</b>\n" +
 		fmt.Sprintf("تست‌های کامل‌شده: <b>%d</b>\n\n", completedTests) +
 		"<i>پروفایل به‌مرور کامل می‌شه؛ لازم نیست همه اطلاعات رو یک‌جا وارد کنی.</i>"
 }
 
 func profileKeyboard(p *profileservice.Profile) tgbotapi.InlineKeyboardMarkup {
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
 	if p.Name == nil || strings.TrimSpace(*p.Name) == "" {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("✍️ ثبت اسم", "profile:name:start"),
+		))
+	}
+	if p.Mobile == nil || strings.TrimSpace(*p.Mobile) == "" {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📱 ثبت موبایل", "profile:mobile:start"),
 		))
 	}
 	rows = append(rows,
