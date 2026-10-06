@@ -14,7 +14,9 @@ knowme.exe
 .vscode/
 
 # logs
+/logs/
 *.log
+*.log.gz
 
 # OS
 .DS_Store
