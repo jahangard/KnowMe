@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -18,6 +20,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	// Load .env for local development. Existing OS environment variables
+	// keep priority because godotenv.Load does not overwrite them.
+	_ = godotenv.Load()
+
 	cfg := Config{
 		Environment:         valueOrDefault("APP_ENV", "development"),
 		TelegramBotToken:    strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
