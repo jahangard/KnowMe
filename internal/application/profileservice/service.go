@@ -14,6 +14,8 @@ type Profile struct {
 	Mobile                 *string
 	ProfileCompletionLevel int
 	PendingField            *string
+	NamePrompted            bool
+	MobilePrompted          bool
 }
 
 type Service struct {
@@ -43,7 +45,7 @@ func (s *Service) Get(ctx context.Context, userID int64) (*Profile, error) {
 
 	var p Profile
 	err := s.db.QueryRowContext(ctx,
-		"SELECT UserId, Name, Age, Gender, Mobile, ProfileCompletionLevel, PendingField "+
+		"SELECT UserId, Name, Age, Gender, Mobile, ProfileCompletionLevel, PendingField, NamePrompted, MobilePrompted "+
 			"FROM dbo.UserProfiles WHERE UserId=@UserId",
 		sql.Named("UserId", userID),
 	).Scan(
@@ -54,6 +56,8 @@ func (s *Service) Get(ctx context.Context, userID int64) (*Profile, error) {
 		&p.Mobile,
 		&p.ProfileCompletionLevel,
 		&p.PendingField,
+		&p.NamePrompted,
+		&p.MobilePrompted,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("load user profile: %w", err)
@@ -87,7 +91,7 @@ func (s *Service) SetAge(ctx context.Context, userID int64, age int) error {
 
 func (s *Service) BeginNameCapture(ctx context.Context, userID int64) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE dbo.UserProfiles SET PendingField='name', UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		"UPDATE dbo.UserProfiles SET PendingField='name', NamePrompted=1, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
 		sql.Named("UserId", userID),
 	)
 	if err != nil {
@@ -98,7 +102,7 @@ func (s *Service) BeginNameCapture(ctx context.Context, userID int64) error {
 
 func (s *Service) SetName(ctx context.Context, userID int64, name string) error {
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE dbo.UserProfiles SET Name=@Name, PendingField=NULL, "+
+		"UPDATE dbo.UserProfiles SET Name=@Name, PendingField=NULL, NamePrompted=1, "+
 			"ProfileCompletionLevel=CASE WHEN ProfileCompletionLevel < 3 THEN 3 ELSE ProfileCompletionLevel END, "+
 			"UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
 		sql.Named("Name", name),
@@ -106,6 +110,17 @@ func (s *Service) SetName(ctx context.Context, userID int64, name string) error 
 	)
 	if err != nil {
 		return fmt.Errorf("set name: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) ClearPending(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE dbo.UserProfiles SET PendingField=NULL, UpdatedAt=SYSUTCDATETIME() WHERE UserId=@UserId",
+		sql.Named("UserId", userID),
+	)
+	if err != nil {
+		return fmt.Errorf("clear pending profile field: %w", err)
 	}
 	return nil
 }
