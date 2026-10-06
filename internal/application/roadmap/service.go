@@ -2,8 +2,11 @@ package roadmap
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
+
+	store "github.com/jahangard/KnowMe/internal/platform/database"
+	"gorm.io/gorm"
 )
 
 type Recommendation struct {
@@ -13,31 +16,43 @@ type Recommendation struct {
 }
 
 type Service struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
-func New(db *sql.DB) *Service {
+func New(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
 func (s *Service) NextTest(ctx context.Context, userID int64) (*Recommendation, error) {
-	const query = "SELECT TOP (1) t.Id, t.Title " +
-		"FROM dbo.Tests t " +
-		"WHERE t.IsActive = 1 " +
-		"AND NOT EXISTS (" +
-		"SELECT 1 FROM dbo.TestSessions ts " +
-		"WHERE ts.UserId = @UserId AND ts.TestId = t.Id AND ts.Status = 'completed') " +
-		"ORDER BY t.SortOrder, t.Id;"
-
-	var rec Recommendation
-	err := s.db.QueryRowContext(ctx, query, sql.Named("UserId", userID)).Scan(&rec.TestID, &rec.Title)
-	if err == sql.ErrNoRows {
-		return nil, nil
+	var completedTestIDs []int64
+	if err := s.db.WithContext(ctx).
+		Model(&store.TestSession{}).
+		Where("UserId = ? AND Status = ?", userID, "completed").
+		Distinct().
+		Pluck("TestId", &completedTestIDs).Error; err != nil {
+		return nil, fmt.Errorf("load completed roadmap tests: %w", err)
 	}
-	if err != nil {
+
+	query := s.db.WithContext(ctx).
+		Model(&store.Test{}).
+		Where("IsActive = ?", true).
+		Order("SortOrder ASC").
+		Order("Id ASC")
+	if len(completedTestIDs) > 0 {
+		query = query.Not("Id IN ?", completedTestIDs)
+	}
+
+	var test store.Test
+	if err := query.First(&test).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("select next roadmap test: %w", err)
 	}
 
-	rec.Reason = "next_not_completed"
-	return &rec, nil
+	return &Recommendation{
+		TestID: test.ID,
+		Title:  test.Title,
+		Reason: "next_not_completed",
+	}, nil
 }
