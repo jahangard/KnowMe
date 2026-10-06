@@ -11,14 +11,16 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jahangard/KnowMe/internal/application/roadmap"
+	"github.com/jahangard/KnowMe/internal/application/testengine"
 )
 
 type Bot struct {
-	api     *tgbotapi.BotAPI
-	timeout time.Duration
-	db      *sql.DB
-	logger  *slog.Logger
-	roadmap *roadmap.Service
+	api        *tgbotapi.BotAPI
+	timeout    time.Duration
+	db         *sql.DB
+	logger     *slog.Logger
+	roadmap    *roadmap.Service
+	testEngine *testengine.Service
 }
 
 func NewBot(token string, timeout time.Duration, db *sql.DB, logger *slog.Logger) (*Bot, error) {
@@ -28,11 +30,12 @@ func NewBot(token string, timeout time.Duration, db *sql.DB, logger *slog.Logger
 	}
 
 	return &Bot{
-		api:     api,
-		timeout: timeout,
-		db:      db,
-		logger:  logger,
-		roadmap: roadmap.New(db),
+		api:        api,
+		timeout:    timeout,
+		db:         db,
+		logger:     logger,
+		roadmap:    roadmap.New(db),
+		testEngine: testengine.New(db),
 	}, nil
 }
 
@@ -92,12 +95,12 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		return err
 	}
 
-	answer := tgbotapi.NewCallback(callback.ID, "")
-	if _, err := b.api.Request(answer); err != nil {
+	if _, err := b.api.Request(tgbotapi.NewCallback(callback.ID, "")); err != nil {
 		b.logger.Warn("callback answer failed", "error", err)
 	}
 
 	chatID := callback.Message.Chat.ID
+	messageID := callback.Message.MessageID
 
 	switch callback.Data {
 	case "menu:home":
@@ -116,10 +119,52 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		if err != nil {
 			return fmt.Errorf("invalid test id: %w", err)
 		}
-		return b.sendTestSelected(chatID, testID)
+
+		view, err := b.testEngine.Start(ctx, userID, testID)
+		if err != nil {
+			return err
+		}
+		return b.editHTML(chatID, messageID, questionText(view), questionKeyboard(view))
+	}
+
+	if strings.HasPrefix(callback.Data, "answer:") {
+		sessionID, questionID, optionID, err := parseAnswerCallback(callback.Data)
+		if err != nil {
+			return err
+		}
+
+		next, result, err := b.testEngine.Answer(ctx, userID, sessionID, questionID, optionID)
+		if err != nil {
+			return err
+		}
+
+		if result != nil {
+			return b.editHTML(chatID, messageID, resultText(result), resultKeyboard())
+		}
+		if next != nil {
+			return b.editHTML(chatID, messageID, questionText(next), questionKeyboard(next))
+		}
 	}
 
 	return nil
+}
+
+func parseAnswerCallback(data string) (sessionID, questionID, optionID int64, err error) {
+	parts := strings.Split(data, ":")
+	if len(parts) != 4 || parts[0] != "answer" {
+		return 0, 0, 0, fmt.Errorf("invalid answer callback")
+	}
+
+	values := []*int64{&sessionID, &questionID, &optionID}
+	for i := 1; i < len(parts); i++ {
+		value, parseErr := strconv.ParseInt(parts[i], 10, 64)
+		if parseErr != nil {
+			return 0, 0, 0, fmt.Errorf("invalid answer callback value: %w", parseErr)
+		}
+		*values[i-1] = value
+	}
+
+	return sessionID, questionID, optionID, nil
 }
 
 func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, error) {
@@ -167,24 +212,19 @@ func (b *Bot) sendRoadmap(ctx context.Context, userID, chatID int64) error {
 	return b.sendHTML(chatID, roadmapText(rec.Title), roadmapKeyboard(rec.TestID))
 }
 
-func (b *Bot) sendTestSelected(chatID, testID int64) error {
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⬅️ برگشت به نقشه راه", "menu:roadmap"),
-		),
-	)
-	return b.sendHTML(
-		chatID,
-		testSelectedText()+fmt.Sprintf("\n\n<code>Test #%d</code>", testID),
-		keyboard,
-	)
-}
-
 func (b *Bot) sendHTML(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = parseModeHTML
 	msg.DisableWebPagePreview = true
 	msg.ReplyMarkup = keyboard
 	_, err := b.api.Send(msg)
+	return err
+}
+
+func (b *Bot) editHTML(chatID int64, messageID int, text string, keyboard tgbotapi.InlineKeyboardMarkup) error {
+	edit := tgbotapi.NewEditMessageTextAndMarkup(chatID, messageID, text, keyboard)
+	edit.ParseMode = parseModeHTML
+	edit.DisableWebPagePreview = true
+	_, err := b.api.Send(edit)
 	return err
 }
