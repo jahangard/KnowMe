@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/jahangard/KnowMe/internal/application/profileservice"
 	"github.com/jahangard/KnowMe/internal/application/roadmap"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
 )
@@ -21,6 +22,7 @@ type Bot struct {
 	logger     *slog.Logger
 	roadmap    *roadmap.Service
 	testEngine *testengine.Service
+	profile    *profileservice.Service
 }
 
 func NewBot(token string, timeout time.Duration, db *sql.DB, logger *slog.Logger) (*Bot, error) {
@@ -36,6 +38,7 @@ func NewBot(token string, timeout time.Duration, db *sql.DB, logger *slog.Logger
 		logger:     logger,
 		roadmap:    roadmap.New(db),
 		testEngine: testengine.New(db),
+		profile:    profileservice.New(db),
 	}, nil
 }
 
@@ -75,14 +78,32 @@ func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) error {
 		return err
 	}
 
-	switch update.Message.Command() {
-	case "start":
-		return b.sendHome(update.Message.Chat.ID)
-	case "roadmap":
-		return b.sendRoadmap(ctx, userID, update.Message.Chat.ID)
-	default:
-		return b.sendHome(update.Message.Chat.ID)
+	profile, err := b.profile.Get(ctx, userID)
+	if err != nil {
+		return err
 	}
+
+	if update.Message.IsCommand() {
+		switch update.Message.Command() {
+		case "start":
+			return b.startForProfile(ctx, userID, update.Message.Chat.ID, profile)
+		case "roadmap":
+			return b.sendRoadmapGuarded(ctx, userID, update.Message.Chat.ID)
+		default:
+			return b.startForProfile(ctx, userID, update.Message.Chat.ID, profile)
+		}
+	}
+
+	if profile.PendingField != nil {
+		switch *profile.PendingField {
+		case "age":
+			return b.handleAgeMessage(ctx, userID, update.Message.Chat.ID, update.Message.Text)
+		case "name":
+			return b.handleNameMessage(ctx, userID, update.Message.Chat.ID, update.Message.Text)
+		}
+	}
+
+	return b.startForProfile(ctx, userID, update.Message.Chat.ID, profile)
 }
 
 func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQuery) error {
@@ -106,14 +127,41 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 	case "menu:home":
 		return b.sendHome(chatID)
 	case "menu:roadmap":
-		return b.sendRoadmap(ctx, userID, chatID)
+		return b.sendRoadmapGuarded(ctx, userID, chatID)
 	case "menu:profile":
-		return b.sendHTML(chatID, profileText(), homeKeyboard())
+		return b.sendProfile(ctx, userID, chatID)
 	case "menu:about":
 		return b.sendHTML(chatID, aboutText(), homeKeyboard())
+	case "profile:name:start":
+		if err := b.profile.BeginNameCapture(ctx, userID); err != nil {
+			return err
+		}
+		return b.editHTML(chatID, messageID, namePromptText(), namePromptKeyboard())
+	case "profile:name:skip":
+		if err := b.profile.ClearPending(ctx, userID); err != nil {
+			return err
+		}
+		return b.editHTML(chatID, messageID, homeText(), homeKeyboard())
+	}
+
+	if strings.HasPrefix(callback.Data, "profile:gender:") {
+		gender := strings.TrimPrefix(callback.Data, "profile:gender:")
+		switch gender {
+		case "male", "female", "prefer_not_say":
+		default:
+			return fmt.Errorf("invalid gender value")
+		}
+		if err := b.profile.SetGender(ctx, userID, gender); err != nil {
+			return err
+		}
+		return b.editHTML(chatID, messageID, agePromptText(), emptyInlineKeyboard())
 	}
 
 	if strings.HasPrefix(callback.Data, "test:start:") {
+		if ok, err := b.baseProfileComplete(ctx, userID, chatID); err != nil || !ok {
+			return err
+		}
+
 		rawID := strings.TrimPrefix(callback.Data, "test:start:")
 		testID, err := strconv.ParseInt(rawID, 10, 64)
 		if err != nil {
@@ -139,7 +187,10 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		}
 
 		if result != nil {
-			return b.editHTML(chatID, messageID, resultText(result), resultKeyboard())
+			if err := b.editHTML(chatID, messageID, resultText(result), resultKeyboard()); err != nil {
+				return err
+			}
+			return b.maybePromptForName(ctx, userID, chatID)
 		}
 		if next != nil {
 			return b.editHTML(chatID, messageID, questionText(next), questionKeyboard(next))
@@ -147,6 +198,118 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 	}
 
 	return nil
+}
+
+func (b *Bot) startForProfile(ctx context.Context, userID, chatID int64, profile *profileservice.Profile) error {
+	if profile.Gender == nil {
+		return b.sendHTML(chatID, genderPromptText(), genderKeyboard())
+	}
+	if profile.Age == nil {
+		if err := b.profile.BeginAgeCapture(ctx, userID); err != nil {
+			return err
+		}
+		return b.sendHTML(chatID, agePromptText(), emptyInlineKeyboard())
+	}
+	return b.sendHome(chatID)
+}
+
+func (b *Bot) baseProfileComplete(ctx context.Context, userID, chatID int64) (bool, error) {
+	profile, err := b.profile.Get(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if profile.Gender == nil {
+		return false, b.sendHTML(chatID, genderPromptText(), genderKeyboard())
+	}
+	if profile.Age == nil {
+		if err := b.profile.BeginAgeCapture(ctx, userID); err != nil {
+			return false, err
+		}
+		return false, b.sendHTML(chatID, agePromptText(), emptyInlineKeyboard())
+	}
+	return true, nil
+}
+
+func (b *Bot) handleAgeMessage(ctx context.Context, userID, chatID int64, raw string) error {
+	normalized := normalizeDigits(strings.TrimSpace(raw))
+	age, err := strconv.Atoi(normalized)
+	if err != nil || age < 13 || age > 100 {
+		return b.sendHTML(chatID, invalidAgeText(), emptyInlineKeyboard())
+	}
+
+	if err := b.profile.SetAge(ctx, userID, age); err != nil {
+		return err
+	}
+
+	return b.sendHTML(
+		chatID,
+		"<b>✅ ثبت شد</b>\n\nحالا می‌تونی مستقیم وارد نقشه راهت بشی.",
+		homeKeyboard(),
+	)
+}
+
+func (b *Bot) handleNameMessage(ctx context.Context, userID, chatID int64, raw string) error {
+	name := strings.TrimSpace(raw)
+	if name == "" || len([]rune(name)) > 40 {
+		return b.sendHTML(
+			chatID,
+			"<b>اسم یا لقب کوتاه‌تری بفرست</b>\n\nحداکثر ۴۰ کاراکتر.",
+			namePromptKeyboard(),
+		)
+	}
+
+	if err := b.profile.SetName(ctx, userID, name); err != nil {
+		return err
+	}
+
+	return b.sendHTML(
+		chatID,
+		"<b>خوشبختم، "+htmlEscape(name)+" 👋</b>\n\nاز این به بعد پروفایلت یک قدم شخصی‌تر شد.",
+		homeKeyboard(),
+	)
+}
+
+func (b *Bot) maybePromptForName(ctx context.Context, userID, chatID int64) error {
+	profile, err := b.profile.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if profile.Name != nil || profile.NamePrompted {
+		return nil
+	}
+
+	completed, err := b.profile.CompletedTestCount(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if completed < 1 {
+		return nil
+	}
+
+	if err := b.profile.BeginNameCapture(ctx, userID); err != nil {
+		return err
+	}
+	return b.sendHTML(chatID, namePromptText(), namePromptKeyboard())
+}
+
+func (b *Bot) sendProfile(ctx context.Context, userID, chatID int64) error {
+	profile, err := b.profile.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	completed, err := b.profile.CompletedTestCount(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return b.sendHTML(chatID, profileText(profile, completed), profileKeyboard(profile))
+}
+
+func (b *Bot) sendRoadmapGuarded(ctx context.Context, userID, chatID int64) error {
+	ok, err := b.baseProfileComplete(ctx, userID, chatID)
+	if err != nil || !ok {
+		return err
+	}
+	return b.sendRoadmap(ctx, userID, chatID)
 }
 
 func parseAnswerCallback(data string) (sessionID, questionID, optionID int64, err error) {
@@ -165,6 +328,16 @@ func parseAnswerCallback(data string) (sessionID, questionID, optionID int64, er
 	}
 
 	return sessionID, questionID, optionID, nil
+}
+
+func normalizeDigits(value string) string {
+	replacer := strings.NewReplacer(
+		"۰", "0", "۱", "1", "۲", "2", "۳", "3", "۴", "4",
+		"۵", "5", "۶", "6", "۷", "7", "۸", "8", "۹", "9",
+		"٠", "0", "١", "1", "٢", "2", "٣", "3", "٤", "4",
+		"٥", "5", "٦", "6", "٧", "7", "٨", "8", "٩", "9",
+	)
+	return replacer.Replace(value)
 }
 
 func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, error) {
