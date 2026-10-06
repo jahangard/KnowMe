@@ -58,9 +58,22 @@ func (b *Bot) Run(ctx context.Context) error {
 			if !ok {
 				return nil
 			}
+
+			startedAt := time.Now()
+			fields := updateLogFields(update)
+			b.logger.Debug("telegram update received", fields...)
+
 			if err := b.handleUpdate(ctx, update); err != nil {
-				b.logger.Error("update handling failed", "error", err, "update_id", update.UpdateID)
+				fields = append(fields,
+					"duration_ms", time.Since(startedAt).Milliseconds(),
+					"error", err,
+				)
+				b.logger.Error("telegram update handling failed", fields...)
+				continue
 			}
+
+			fields = append(fields, "duration_ms", time.Since(startedAt).Milliseconds())
+			b.logger.Debug("telegram update handled", fields...)
 		}
 	}
 }
@@ -400,4 +413,43 @@ func (b *Bot) editHTML(chatID int64, messageID int, text string, keyboard tgbota
 	edit.DisableWebPagePreview = true
 	_, err := b.api.Send(edit)
 	return err
+}
+
+func updateLogFields(update tgbotapi.Update) []any {
+	fields := []any{
+		"update_id", update.UpdateID,
+		"update_type", updateType(update),
+	}
+
+	if update.Message != nil {
+		fields = append(fields, "chat_id", update.Message.Chat.ID)
+		if update.Message.From != nil {
+			fields = append(fields, "telegram_user_id", update.Message.From.ID)
+		}
+		return fields
+	}
+
+	if update.CallbackQuery != nil {
+		if update.CallbackQuery.From != nil {
+			fields = append(fields, "telegram_user_id", update.CallbackQuery.From.ID)
+		}
+		if update.CallbackQuery.Message != nil {
+			fields = append(fields, "chat_id", update.CallbackQuery.Message.Chat.ID)
+		}
+	}
+
+	return fields
+}
+
+func updateType(update tgbotapi.Update) string {
+	switch {
+	case update.CallbackQuery != nil:
+		return "callback_query"
+	case update.Message != nil && update.Message.IsCommand():
+		return "command"
+	case update.Message != nil:
+		return "message"
+	default:
+		return "other"
+	}
 }
