@@ -9,7 +9,10 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	sqlite "github.com/libtnb/sqlite"
+	"gorm.io/driver/sqlserver"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 type Provider string
@@ -20,7 +23,8 @@ const (
 )
 
 type Handle struct {
-	*sql.DB
+	Gorm     *gorm.DB
+	SQL      *sql.DB
 	Provider Provider
 }
 
@@ -36,13 +40,14 @@ func ParseProvider(raw string) (Provider, error) {
 }
 
 func Open(ctx context.Context, provider Provider, sqlServerDSN, sqlitePath string) (*Handle, error) {
+	var dialector gorm.Dialector
+
 	switch provider {
 	case ProviderSQLServer:
-		db, err := OpenSQLServer(ctx, sqlServerDSN)
-		if err != nil {
-			return nil, err
+		if strings.TrimSpace(sqlServerDSN) == "" {
+			return nil, fmt.Errorf("SQLSERVER_DSN is required when DB_PROVIDER=sqlserver")
 		}
-		return &Handle{DB: db, Provider: provider}, nil
+		dialector = sqlserver.Open(sqlServerDSN)
 
 	case ProviderSQLite:
 		if strings.TrimSpace(sqlitePath) == "" {
@@ -55,59 +60,55 @@ func Open(ctx context.Context, provider Provider, sqlServerDSN, sqlitePath strin
 					return nil, fmt.Errorf("create sqlite directory: %w", err)
 				}
 			}
+			sqlitePath += "?_txlock=immediate&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 		}
-
-		db, err := sql.Open("sqlite", sqlitePath)
-		if err != nil {
-			return nil, fmt.Errorf("open sqlite: %w", err)
-		}
-
-		// A single connection keeps connection-level PRAGMAs deterministic and
-		// is plenty for the local development workload.
-		db.SetMaxOpenConns(1)
-		db.SetMaxIdleConns(1)
-		db.SetConnMaxLifetime(0)
-
-		pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-
-		if err := db.PingContext(pingCtx); err != nil {
-			_ = db.Close()
-			return nil, fmt.Errorf("ping sqlite: %w", err)
-		}
-
-		for _, pragma := range []string{
-			"PRAGMA foreign_keys = ON",
-			"PRAGMA journal_mode = WAL",
-			"PRAGMA busy_timeout = 5000",
-		} {
-			if _, err := db.ExecContext(pingCtx, pragma); err != nil {
-				_ = db.Close()
-				return nil, fmt.Errorf("configure sqlite (%s): %w", pragma, err)
-			}
-		}
-
-		return &Handle{DB: db, Provider: provider}, nil
+		dialector = sqlite.Open(sqlitePath)
 
 	default:
 		return nil, fmt.Errorf("unsupported database provider %q", provider)
 	}
-}
 
-func (h *Handle) Table(name string) string {
-	if h.Provider == ProviderSQLServer {
-		return "dbo." + name
+	orm, err := gorm.Open(dialector, &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+		Logger:                                   gormlogger.Default.LogMode(gormlogger.Warn),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open %s with gorm: %w", provider, err)
 	}
-	return name
-}
 
-func (h *Handle) NowExpr() string {
-	if h.Provider == ProviderSQLServer {
-		return "SYSUTCDATETIME()"
+	sqlDB, err := orm.DB()
+	if err != nil {
+		return nil, fmt.Errorf("get sql db from gorm: %w", err)
 	}
-	return "CURRENT_TIMESTAMP"
+
+	if provider == ProviderSQLite {
+		sqlDB.SetMaxOpenConns(1)
+		sqlDB.SetMaxIdleConns(1)
+		sqlDB.SetConnMaxLifetime(0)
+	} else {
+		sqlDB.SetMaxOpenConns(10)
+		sqlDB.SetMaxIdleConns(5)
+		sqlDB.SetConnMaxLifetime(30 * time.Minute)
+		sqlDB.SetConnMaxIdleTime(5 * time.Minute)
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := sqlDB.PingContext(pingCtx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("ping %s: %w", provider, err)
+	}
+
+	return &Handle{
+		Gorm:     orm,
+		SQL:      sqlDB,
+		Provider: provider,
+	}, nil
 }
 
-func (h *Handle) IsSQLite() bool {
-	return h.Provider == ProviderSQLite
+func (h *Handle) Close() error {
+	if h == nil || h.SQL == nil {
+		return nil
+	}
+	return h.SQL.Close()
 }
