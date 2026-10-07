@@ -8,6 +8,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jahangard/KnowMe/internal/application/profileservice"
+	"github.com/jahangard/KnowMe/internal/application/testcatalog"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
 )
 
@@ -16,18 +17,118 @@ const parseModeHTML = "HTML"
 func homeText() string {
 	return "<b>✨ KnowMe</b>\n" +
 		"خودت رو بهتر بشناس؛ کوتاه، جذاب و شخصی‌سازی‌شده.\n\n" +
-		"من جواب‌هات رو مرحله‌به‌مرحله به خاطر می‌سپارم و بر اساس شناختی که ازت می‌سازم، تست بعدی رو پیشنهاد می‌دم.\n\n" +
-		"<i>برای شروع، نقشه راه شخصی‌ات رو باز کن.</i>"
+		"می‌تونی از بین موضوعات، تست دلخواهت رو انتخاب کنی یا بذاری نقشه راه، قدم بعدی رو برات انتخاب کنه.\n\n" +
+		"<i>از «موضوعات تست‌ها» شروع کن.</i>"
 }
 
 func homeKeyboard() tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🧩 موضوعات تست‌ها", "menu:topics"),
+		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🧭 نقشه راه من", "menu:roadmap"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👤 پروفایل من", "menu:profile"),
 			tgbotapi.NewInlineKeyboardButtonData("✨ درباره KnowMe", "menu:about"),
+		),
+	)
+}
+
+func topicsText() string {
+	return "<b>🧩 موضوعات تست‌ها</b>\n\n" +
+		"موضوعی که بیشتر کنجکاوت می‌کنه انتخاب کن؛ یا اگر نمی‌خوای انتخاب کنی، <b>نقشه راه من</b> خودش تست بعدی رو برات پیدا می‌کنه.\n\n" +
+		"<i>هرچی بیشتر تست انجام بدی، پیشنهادهای نقشه راه شخصی‌تر می‌شن.</i>"
+}
+
+func topicsKeyboard(categories []testcatalog.Category) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(categories)+3)
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🧭 نقشه راه من", "menu:roadmap"),
+	))
+
+	for i := 0; i < len(categories); i += 2 {
+		row := []tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData(
+				categoryLabel(categories[i]),
+				fmt.Sprintf("topic:category:%d", categories[i].ID),
+			),
+		}
+		if i+1 < len(categories) {
+			row = append(row, tgbotapi.NewInlineKeyboardButtonData(
+				categoryLabel(categories[i+1]),
+				fmt.Sprintf("topic:category:%d", categories[i+1].ID),
+			))
+		}
+		rows = append(rows, row)
+	}
+
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
+	))
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func categoryLabel(category testcatalog.Category) string {
+	icon := "🧩"
+	switch category.Code {
+	case "love":
+		icon = "❤️"
+	case "challenge":
+		icon = "🎯"
+	case "self_knowledge":
+		icon = "🧠"
+	case "adult":
+		icon = "🔞"
+	}
+	return icon + " " + category.Title
+}
+
+func categoryText(category *testcatalog.Category, tests []testcatalog.Test) string {
+	if len(tests) == 0 {
+		return "<b>" + htmlEscape(categoryLabel(*category)) + "</b>\n\n" +
+			"این موضوع آماده‌ست، ولی هنوز تست فعالی داخلش منتشر نشده.\n\n" +
+			"<i>به‌زودی تست‌های این بخش اضافه می‌شن.</i>"
+	}
+
+	return "<b>" + htmlEscape(categoryLabel(*category)) + "</b>\n\n" +
+		"یکی از تست‌های این موضوع رو انتخاب کن:"
+}
+
+func categoryKeyboard(tests []testcatalog.Test) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(tests)+2)
+	for _, test := range tests {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				test.Title,
+				fmt.Sprintf("test:start:%d", test.ID),
+			),
+		))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ موضوعات", "menu:topics"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
+		),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func adultGateText() string {
+	return "<b>🔞 این بخش مخصوص ۱۸ سال به بالاست</b>\n\n" +
+		"بر اساس سنی که در پروفایلت ثبت شده، فعلاً این موضوع برات نمایش داده نمی‌شه."
+}
+
+func adultGateKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("⬅️ برگشت به موضوعات", "menu:topics"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
 		),
 	)
 }
