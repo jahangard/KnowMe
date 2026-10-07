@@ -137,6 +137,7 @@ Project decisions and rules are documented here:
 - **Architecture:** `docs/architecture.md`
 - **Product & content principles:** `docs/PRODUCT-PRINCIPLES.md`
 - **Adding tests using database only:** `docs/ADDING-TESTS.md`
+- **Decision log:** `docs/DECISIONS.md`
 - **Change log:** `docs/CHANGELOG.md`
 - **Conversation/decision summary:** `docs/CONVERSATION-SUMMARY.md`
 
