@@ -25,20 +25,21 @@ KnowMe یک تجربه تعاملی مبتنی بر Telegram برای تست‌�
 
 صفحه اصلی باید ابتدا دسته‌ها را نشان دهد. ورود به دسته عادی، فهرست تست‌های آن دسته را نمایش می‌دهد؛ ورود به «نقشه راه من» مستقیماً Recommendation Engine را اجرا می‌کند.
 
-## 3. تست اولیه
+## 3. تست‌های اولیه پیاده‌سازی‌شده
 
-اولین تست Seed شده فعلی:
+پنج Test اولیه اکنون داخل سیستم وجود دارند:
 
-**💞 سبک عشق‌ورزی** (`love_style_v1`)
+1. **💞 سبک عشق‌ورزی** — `love_style_v1`
+2. **✨ تیپ جذابیت** — `attraction_style_v1`
+3. **💘 سناریوهای قرار** — `dating_scenarios_v1`
+4. **🛡 مرزهای شخصی** — `personal_boundaries_v1`
+5. **🪞 حقیقت تلخ** — `bitter_truth_v1`
 
-این تست برای هر دو جنس طراحی شده و پاسخ‌ها را در چهار Trait اصلی امتیازدهی می‌کند:
+هر Test فعلاً ۸ سؤال Single Choice دارد.
 
-- `words` — ابراز علاقه با کلام
-- `time` — وقت باکیفیت
-- `care` — توجه و عمل
-- `touch` — نزدیکی و تماس
+مدل Scoring فعلی بر پایه `TraitKey + Score` است و نتیجه غالب از مجموع امتیاز Traitها تعیین می‌شود.
 
-تست فعلی ۸ سؤال Single Choice دارد و نتیجه غالب از مجموع امتیاز Traitها تعیین می‌شود.
+نتیجه‌ها دیگر در Telegram UI هاردکد نیستند و از جدول `TestResultProfiles` خوانده می‌شوند.
 
 ## 4. بانک موضوعات تست‌ها
 
@@ -141,16 +142,16 @@ KnowMe یک تجربه تعاملی مبتنی بر Telegram برای تست‌�
 
 Bot بر پایه Long Polling کار می‌کند.
 
-منوی اصلی شامل مسیرهایی مانند:
+منوی اصلی شامل:
 
-- خانه
-- نقشه راه
-- پروفایل
-- درباره
+- 🧩 موضوعات تست‌ها
+- 🧭 نقشه راه من
+- 👤 پروفایل من
+- ✨ درباره KnowMe
 
 برای تست‌ها از Inline Keyboard و Callback Query استفاده می‌شود. سؤال بعدی در همان پیام Edit می‌شود تا چت بی‌دلیل شلوغ نشود.
 
-هدف UI بعدی: اضافه‌شدن ورودی «تست‌ها» به صفحه اصلی و نمایش Category Browser مطابق ساختار بخش ۲.
+Category Browser پیاده‌سازی شده و Topicها از Database خوانده می‌شوند. «نقشه راه من» نیز در کنار Topicها نمایش داده می‌شود.
 
 ## 7. معماری داده
 
@@ -162,6 +163,7 @@ Bot بر پایه Long Polling کار می‌کند.
 - `Tests`
 - `Questions`
 - `QuestionOptions`
+- `TestResultProfiles`
 - `TestSessions`
 - `TestAnswers`
 - `TestResults`
@@ -188,9 +190,11 @@ Bot بر پایه Long Polling کار می‌کند.
 
 ORM انتخاب‌شده: **GORM**
 
-برنامه در Startup از `AutoMigrate` استفاده می‌کند و Seed اولیه نیز Idempotent است. Provider از طریق `DB_PROVIDER=sqlite|sqlserver` انتخاب می‌شود.
+برنامه در Startup از `AutoMigrate` استفاده می‌کند. Provider از طریق `DB_PROVIDER=sqlite|sqlserver` انتخاب می‌شود.
 
 در Development، SQLite انتخاب پیش‌فرض است.
+
+Seed اولیه فقط رکوردهای Missing را می‌سازد و Content موجود در Database را بازنویسی نمی‌کند. بنابراین بعد از Bootstrap، Database منبع اصلی حقیقت Test Content است.
 
 ## 9. Logging و Observability
 
@@ -262,11 +266,11 @@ Branch فعلی توسعه در این مرحله: `main`.
 
 فایل‌های Local Database، Log و Environment در `.gitignore` قرار گرفته‌اند.
 
-## 13. تصمیم‌های محصول برای ادامه
+## 13. وضعیت فعلی مسیر تست‌ها
 
-اولویت بعدی پیاده‌سازی Category Browser است، نه اضافه‌کردن تعداد زیادی تست بدون ساختار.
+Category Browser پیاده‌سازی شده است.
 
-جریان پیشنهادی:
+جریان فعلی:
 
 ```text
 Home
@@ -283,9 +287,9 @@ Home
              └── Age Gate + لیست تست‌ها
 ```
 
-Categoryها باید Data-driven باشند؛ یعنی عنوان، ترتیب، فعال/غیرفعال بودن و تست‌های هر دسته از دیتابیس خوانده شوند، نه اینکه منطق دسته‌ها در Telegram Handler هاردکد شود.
+Categoryها و Testهای هر Category از Database خوانده می‌شوند.
 
-«نقشه راه من» می‌تواند در UI کنار Categoryها دیده شود ولی بهتر است یک Virtual/System Category باشد و لزوماً به رکورد عادی TestCategory وابسته نباشد.
+«نقشه راه من» در UI کنار Categoryها دیده می‌شود و یک Virtual/System entry است، نه TestCategory عادی.
 
 ## 14. جهت طراحی تست‌های آینده
 
@@ -299,20 +303,26 @@ Categoryها باید Data-driven باشند؛ یعنی عنوان، ترتیب�
 - کوتاه شروع شوند و Completion Rate بالا داشته باشند
 - از سؤال‌های تکراری و قابل حدس پرهیز کنند
 
-## 15. تعریف Done برای مرحله بعد
+## 15. اصول معماری تثبیت‌شده
 
-مرحله Category Browser زمانی Done محسوب می‌شود که:
+- Test content باید Data-driven باشد.
+- افزودن Test استاندارد جدید باید فقط با Database ممکن باشد.
+- Result title/description نباید در UI هاردکد شود.
+- Seed فقط Bootstrap است و DB را overwrite نمی‌کند.
+- Raw Answers همیشه ذخیره می‌شوند.
+- Roadmap و انتخاب آزاد Test هر دو حفظ می‌شوند.
+- Progressive Profiling باید سبک و مرحله‌ای بماند.
+- Chat با Edit Message تا جای ممکن خلوت نگه داشته می‌شود.
+- ۱۸+ همیشه Age Gate دارد.
+- Testهای سرگرمی Diagnosis محسوب نمی‌شوند.
+- CI باید Format و Compile/Test را پاس کند.
 
-1. Home دکمه «تست‌ها» داشته باشد.
-2. صفحه تست‌ها پنج مسیر توافق‌شده را نشان دهد.
-3. Categoryهای واقعی از دیتابیس Load شوند.
-4. انتخاب Category، تست‌های فعال همان Category را نشان دهد.
-5. انتخاب Test، Test Engine فعلی را Start کند.
-6. «نقشه راه من» همچنان Recommendation خودکار داشته باشد.
-7. دسته ۱۸+ Age Gate داشته باشد.
-8. Back/Home navigation بدون تولید پیام‌های اضافه کار کند.
-9. SQLite و SQL Server هر دو Build/Run شوند.
-10. CI سبز باقی بماند.
+جزئیات بیشتر:
+
+- `docs/PRODUCT-PRINCIPLES.md`
+- `docs/architecture.md`
+- `docs/ADDING-TESTS.md`
+- `docs/CHANGELOG.md`
 
 ---
 
