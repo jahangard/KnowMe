@@ -26,11 +26,40 @@ func MigrateAndSeed(ctx context.Context, handle *Handle) error {
 		return fmt.Errorf("auto migrate database: %w", err)
 	}
 
+	if err := seedCategories(ctx, handle.Gorm); err != nil {
+		return fmt.Errorf("seed test categories: %w", err)
+	}
+
 	if err := seedLoveStyle(ctx, handle.Gorm); err != nil {
 		return fmt.Errorf("seed love style test: %w", err)
 	}
 
 	return nil
+}
+
+func seedCategories(ctx context.Context, db *gorm.DB) error {
+	categories := []TestCategory{
+		{Code: "love", Title: "عشق و رابطه", SortOrder: 10, IsActive: true},
+		{Code: "challenge", Title: "چالشی و باحال", SortOrder: 20, IsActive: true},
+		{Code: "self_knowledge", Title: "خودشناسی عمیق‌تر", SortOrder: 30, IsActive: true},
+		{Code: "adult", Title: "۱۸+", SortOrder: 40, IsActive: true},
+	}
+
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, category := range categories {
+			var row TestCategory
+			if err := tx.Where("Code = ?", category.Code).
+				Assign(map[string]any{
+					"Title":     category.Title,
+					"SortOrder": category.SortOrder,
+					"IsActive":  category.IsActive,
+				}).
+				FirstOrCreate(&row, category).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func seedLoveStyle(ctx context.Context, db *gorm.DB) error {
