@@ -30,12 +30,16 @@ type QuestionView struct {
 }
 
 type Result struct {
-	SessionID int64
-	TestID    int64
-	TestTitle string
-	TraitKey  string
-	Score     float64
-	Scores    map[string]float64
+	SessionID   int64
+	TestID      int64
+	TestTitle   string
+	TraitKey    string
+	Score       float64
+	Scores      map[string]float64
+	ResultTitle string
+	Subtitle    string
+	Description string
+	Labels      map[string]string
 }
 
 type Service struct {
@@ -256,17 +260,60 @@ func (s *Service) finishTx(tx *gorm.DB, userID, sessionID, testID int64) (*Resul
 		scores[row.TraitKey] = row.Score
 	}
 
-	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].Score == scored[j].Score {
-			return scored[i].TraitKey < scored[j].TraitKey
+	var profiles []store.TestResultProfile
+	if err := tx.
+		Where("TestId = ? AND IsActive = ?", testID, true).
+		Order("SortOrder ASC").
+		Order("Id ASC").
+		Find(&profiles).Error; err != nil {
+		return nil, fmt.Errorf("load test result profiles: %w", err)
+	}
+
+	labels := make(map[string]string, len(profiles))
+	profileByTrait := make(map[string]store.TestResultProfile, len(profiles))
+	orderByTrait := make(map[string]int, len(profiles))
+	for index, profile := range profiles {
+		labels[profile.TraitKey] = profile.Label
+		profileByTrait[profile.TraitKey] = profile
+		order := profile.SortOrder
+		if order == 0 {
+			order = index + 1
 		}
-		return scored[i].Score > scored[j].Score
+		orderByTrait[profile.TraitKey] = order
+	}
+
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].Score != scored[j].Score {
+			return scored[i].Score > scored[j].Score
+		}
+		leftOrder, leftOK := orderByTrait[scored[i].TraitKey]
+		rightOrder, rightOK := orderByTrait[scored[j].TraitKey]
+		if leftOK && rightOK && leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+		if leftOK != rightOK {
+			return leftOK
+		}
+		return scored[i].TraitKey < scored[j].TraitKey
 	})
 	winner := scored[0]
 
 	var test store.Test
 	if err := tx.Where("Id = ?", testID).First(&test).Error; err != nil {
 		return nil, fmt.Errorf("load test title: %w", err)
+	}
+
+	winnerProfile, hasProfile := profileByTrait[winner.TraitKey]
+	resultTitle := "✨ نتیجه تو"
+	subtitle := "این الگو در پاسخ‌های تو بیشتر دیده شد."
+	description := "نتیجه بر اساس انتخاب‌های همین تست ساخته شده است."
+	if hasProfile {
+		resultTitle = winnerProfile.Title
+		subtitle = winnerProfile.Subtitle
+		description = winnerProfile.Description
+	}
+	if _, ok := labels[winner.TraitKey]; !ok {
+		labels[winner.TraitKey] = winner.TraitKey
 	}
 
 	rawScores, err := json.Marshal(scores)
@@ -286,10 +333,12 @@ func (s *Service) finishTx(tx *gorm.DB, userID, sessionID, testID int64) (*Resul
 		return nil, fmt.Errorf("complete session: %w", err)
 	}
 
+	summary := description
 	testResult := store.TestResult{
 		SessionID:  sessionID,
 		ResultType: winner.TraitKey,
 		ScoreJSON:  &scoreJSON,
+		Summary:    &summary,
 	}
 	if err := tx.Create(&testResult).Error; err != nil {
 		return nil, fmt.Errorf("save test result: %w", err)
@@ -319,11 +368,15 @@ func (s *Service) finishTx(tx *gorm.DB, userID, sessionID, testID int64) (*Resul
 	}
 
 	return &Result{
-		SessionID: sessionID,
-		TestID:    testID,
-		TestTitle: test.Title,
-		TraitKey:  winner.TraitKey,
-		Score:     winner.Score,
-		Scores:    scores,
+		SessionID:   sessionID,
+		TestID:      testID,
+		TestTitle:   test.Title,
+		TraitKey:    winner.TraitKey,
+		Score:       winner.Score,
+		Scores:      scores,
+		ResultTitle: resultTitle,
+		Subtitle:    subtitle,
+		Description: description,
+		Labels:      labels,
 	}, nil
 }
