@@ -634,7 +634,7 @@ func bitterTruthSeed() testSeedDefinition {
 		Code:         "bitter_truth_v1",
 		Title:        "🪞 حقیقت تلخ",
 		Description:  "یک تست چالشی برای پیدا کردن الگویی که شاید درباره خودت کمتر دوست داشته باشی ببینی.",
-		SortOrder:    10,
+		SortOrder:    50,
 		Results: []resultSeed{
 			{
 				TraitKey: "truth:approval",
