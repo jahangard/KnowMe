@@ -12,6 +12,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/jahangard/KnowMe/internal/application/profileservice"
 	"github.com/jahangard/KnowMe/internal/application/roadmap"
+	"github.com/jahangard/KnowMe/internal/application/testcatalog"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
 	store "github.com/jahangard/KnowMe/internal/platform/database"
 	"gorm.io/gorm"
@@ -23,6 +24,7 @@ type Bot struct {
 	db         *gorm.DB
 	logger     *slog.Logger
 	roadmap    *roadmap.Service
+	catalog    *testcatalog.Service
 	testEngine *testengine.Service
 	profile    *profileservice.Service
 }
@@ -39,6 +41,7 @@ func NewBot(token string, timeout time.Duration, db *gorm.DB, logger *slog.Logge
 		db:         db,
 		logger:     logger,
 		roadmap:    roadmap.New(db),
+		catalog:    testcatalog.New(db),
 		testEngine: testengine.New(db),
 		profile:    profileservice.New(db),
 	}, nil
@@ -141,6 +144,8 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 	switch callback.Data {
 	case "menu:home":
 		return b.sendHome(chatID)
+	case "menu:topics":
+		return b.showTopics(ctx, chatID, messageID)
 	case "menu:roadmap":
 		return b.sendRoadmapGuarded(ctx, userID, chatID)
 	case "menu:profile":
@@ -157,6 +162,15 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 			return err
 		}
 		return b.editHTML(chatID, messageID, homeText(), homeKeyboard())
+	}
+
+	if strings.HasPrefix(callback.Data, "topic:category:") {
+		rawID := strings.TrimPrefix(callback.Data, "topic:category:")
+		categoryID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid category id: %w", err)
+		}
+		return b.showCategory(ctx, userID, chatID, messageID, categoryID)
 	}
 
 	if strings.HasPrefix(callback.Data, "profile:gender:") {
@@ -400,6 +414,40 @@ func (b *Bot) ensureUser(ctx context.Context, tgUser *tgbotapi.User) (int64, err
 
 func (b *Bot) sendHome(chatID int64) error {
 	return b.sendHTML(chatID, homeText(), homeKeyboard())
+}
+
+func (b *Bot) showTopics(ctx context.Context, chatID int64, messageID int) error {
+	categories, err := b.catalog.Categories(ctx)
+	if err != nil {
+		return err
+	}
+	return b.editHTML(chatID, messageID, topicsText(), topicsKeyboard(categories))
+}
+
+func (b *Bot) showCategory(ctx context.Context, userID, chatID int64, messageID int, categoryID int64) error {
+	category, err := b.catalog.Category(ctx, categoryID)
+	if err != nil {
+		return err
+	}
+	if category == nil {
+		return b.editHTML(chatID, messageID, "<b>موضوع پیدا نشد</b>", homeKeyboard())
+	}
+
+	if category.Code == "adult" {
+		profile, err := b.profile.Get(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if profile.Age == nil || *profile.Age < 18 {
+			return b.editHTML(chatID, messageID, adultGateText(), adultGateKeyboard())
+		}
+	}
+
+	tests, err := b.catalog.Tests(ctx, categoryID)
+	if err != nil {
+		return err
+	}
+	return b.editHTML(chatID, messageID, categoryText(category, tests), categoryKeyboard(tests))
 }
 
 func (b *Bot) sendRoadmap(ctx context.Context, userID, chatID int64) error {
