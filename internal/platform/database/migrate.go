@@ -50,11 +50,6 @@ func seedCategories(ctx context.Context, db *gorm.DB) error {
 		for _, category := range categories {
 			var row TestCategory
 			if err := tx.Where("Code = ?", category.Code).
-				Assign(map[string]any{
-					"Title":     category.Title,
-					"SortOrder": category.SortOrder,
-					"IsActive":  category.IsActive,
-				}).
 				FirstOrCreate(&row, category).Error; err != nil {
 				return err
 			}
