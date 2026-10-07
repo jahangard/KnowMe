@@ -72,6 +72,20 @@ type QuestionOption struct {
 
 func (QuestionOption) TableName() string { return "QuestionOptions" }
 
+type TestResultProfile struct {
+	ID          int64  `gorm:"column:Id;primaryKey;autoIncrement"`
+	TestID      int64  `gorm:"column:TestId;not null;index:UX_TestResultProfiles_Test_Trait,unique"`
+	TraitKey    string `gorm:"column:TraitKey;size:100;not null;index:UX_TestResultProfiles_Test_Trait,unique"`
+	Label       string `gorm:"column:Label;size:200;not null"`
+	Title       string `gorm:"column:Title;size:250;not null"`
+	Subtitle    string `gorm:"column:Subtitle;size:500"`
+	Description string `gorm:"column:Description;size:2000"`
+	SortOrder   int    `gorm:"column:SortOrder;not null;default:0"`
+	IsActive    bool   `gorm:"column:IsActive;not null;default:true"`
+}
+
+func (TestResultProfile) TableName() string { return "TestResultProfiles" }
+
 type TestSession struct {
 	ID                int64      `gorm:"column:Id;primaryKey;autoIncrement"`
 	UserID            int64      `gorm:"column:UserId;not null;index:IX_TestSessions_User_Status"`
