@@ -66,13 +66,6 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 	description := definition.Description
 	var test Test
 	if err := tx.Where("Code = ?", definition.Code).
-		Assign(map[string]any{
-			"CategoryId":  category.ID,
-			"Title":       definition.Title,
-			"Description": &description,
-			"SortOrder":   definition.SortOrder,
-			"IsActive":    true,
-		}).
 		FirstOrCreate(&test, Test{
 			CategoryID:  category.ID,
 			Code:        definition.Code,
@@ -99,14 +92,6 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 			row.SortOrder = resultIndex + 1
 		}
 		if err := tx.Where("TestId = ? AND TraitKey = ?", test.ID, seed.TraitKey).
-			Assign(map[string]any{
-				"Label":       row.Label,
-				"Title":       row.Title,
-				"Subtitle":    row.Subtitle,
-				"Description": row.Description,
-				"SortOrder":   row.SortOrder,
-				"IsActive":    true,
-			}).
 			FirstOrCreate(&row).Error; err != nil {
 			return err
 		}
@@ -121,11 +106,6 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 			IsActive:     true,
 		}
 		if err := tx.Where("TestId = ? AND [Order] = ?", test.ID, question.Order).
-			Assign(map[string]any{
-				"Text":         question.Text,
-				"QuestionType": question.QuestionType,
-				"IsActive":     true,
-			}).
 			FirstOrCreate(&question).Error; err != nil {
 			return err
 		}
@@ -144,11 +124,6 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 				TraitKey:   &traitKey,
 			}
 			if err := tx.Where("QuestionId = ? AND [Order] = ?", question.ID, option.Order).
-				Assign(map[string]any{
-					"Text":     option.Text,
-					"Score":    option.Score,
-					"TraitKey": option.TraitKey,
-				}).
 				FirstOrCreate(&option).Error; err != nil {
 				return err
 			}
