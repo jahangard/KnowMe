@@ -329,8 +329,6 @@ func questionKeyboard(view *testengine.QuestionView) tgbotapi.InlineKeyboardMark
 }
 
 func resultText(result *testengine.Result) string {
-	title, subtitle, description := traitPresentation(result.TraitKey)
-
 	total := 0.0
 	for _, score := range result.Scores {
 		total += score
@@ -350,12 +348,12 @@ func resultText(result *testengine.Result) string {
 
 	return "<b>✨ نتیجه تست تو</b>\n\n" +
 		"<b>" + htmlEscape(result.TestTitle) + "</b>\n\n" +
-		"<b>" + title + "</b>\n" +
-		subtitle + "\n\n" +
-		description + "\n\n" +
+		"<b>" + htmlEscape(result.ResultTitle) + "</b>\n" +
+		htmlEscape(result.Subtitle) + "\n\n" +
+		htmlEscape(result.Description) + "\n\n" +
 		"<b>شدت این سبک:</b> " + strings.Repeat("★", stars) + strings.Repeat("☆", 5-stars) + "\n" +
 		fmt.Sprintf("<b>سهم از پاسخ‌ها:</b> %d%%\n\n", percent) +
-		scoreBreakdown(result.Scores) +
+		scoreBreakdown(result.Scores, result.Labels) +
 		"\n\n<i>این نتیجه برای سرگرمی و خودشناسی طراحی شده و تشخیص روان‌شناختی نیست.</i>"
 }
 
@@ -371,7 +369,7 @@ func resultKeyboard() tgbotapi.InlineKeyboardMarkup {
 	)
 }
 
-func scoreBreakdown(scores map[string]float64) string {
+func scoreBreakdown(scores map[string]float64, labels map[string]string) string {
 	type item struct {
 		key   string
 		score float64
@@ -391,7 +389,10 @@ func scoreBreakdown(scores map[string]float64) string {
 
 	lines := []string{"<b>نقشه سبک‌های تو</b>"}
 	for _, item := range items {
-		name, _, _ := traitPresentation(item.key)
+		name := labels[item.key]
+		if strings.TrimSpace(name) == "" {
+			name = item.key
+		}
 		percent := 0
 		if total > 0 {
 			percent = int(math.Round(item.score / total * 100))
@@ -409,21 +410,6 @@ func scoreBreakdown(scores map[string]float64) string {
 		))
 	}
 	return strings.Join(lines, "\n")
-}
-
-func traitPresentation(key string) (title, subtitle, description string) {
-	switch key {
-	case "words":
-		return "💬 عاشقِ کلمات", "برای تو، حرف خوب فقط حرف نیست.", "ابراز مستقیم احساس، تعریف، تأیید و جمله‌های صمیمی خیلی زود به قلبت راه پیدا می‌کنن. احتمالاً خودت هم وقتی کسی برات مهمه، بیشتر از زبان و کلمات استفاده می‌کنی."
-	case "time":
-		return "⏳ عاشقِ حضور", "برای تو، وقت گذاشتن یعنی انتخاب کردن.", "حضور واقعی، توجه بدون حواس‌پرتی و وقت دونفره بیشتر از کارهای نمایشی روی تو اثر می‌ذاره. وقتی کسی زمانش رو به تو می‌ده، احساس ارزشمندی بیشتری می‌کنی."
-	case "care":
-		return "🛠 عاشقِ عمل", "برای تو، دوست داشتن باید دیده بشه.", "کمک کردن، مسئولیت برداشتن و کارهای کوچکِ واقعی برای تو معنی زیادی دارن. احتمالاً بیشتر به رفتار نگاه می‌کنی تا وعده‌ها."
-	case "touch":
-		return "🤍 عاشقِ نزدیکی", "برای تو، فاصله کم یعنی احساس بیشتر.", "آغوش، تماس و نزدیکی فیزیکیِ محترمانه برای تو یکی از واضح‌ترین نشانه‌های محبت و امنیت عاطفیه."
-	default:
-		return "✨ سبک ترکیبی", "تو یک الگوی تک‌بعدی نداری.", "چند شیوه مختلف برای دریافت و ابراز علاقه در تو نزدیک به هم هستند."
-	}
 }
 
 func htmlEscape(s string) string {
