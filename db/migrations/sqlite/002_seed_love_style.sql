@@ -2,7 +2,7 @@ INSERT OR IGNORE INTO TestCategories (Code, Title, SortOrder, IsActive)
 VALUES ('love', 'عشق و رابطه', 10, 1);
 
 INSERT OR IGNORE INTO Tests (CategoryId, Code, Title, Description, SortOrder, IsActive)
-SELECT Id, 'love_style_v1', '💞 سبک عشق‌ورزی',
+SELECT Id, 'love_style_v1', 'سبک عشق‌ورزی',
        'یک تست کوتاه سرگرمی برای شناخت شیوه غالب ابراز علاقه در رابطه.',
        10, 1
 FROM TestCategories

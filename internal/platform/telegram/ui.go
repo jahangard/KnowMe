@@ -10,6 +10,7 @@ import (
 	"github.com/jahangard/KnowMe/internal/application/profileservice"
 	"github.com/jahangard/KnowMe/internal/application/testcatalog"
 	"github.com/jahangard/KnowMe/internal/application/testengine"
+	store "github.com/jahangard/KnowMe/internal/platform/database"
 )
 
 const parseModeHTML = "HTML"
@@ -27,12 +28,106 @@ func homeKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("🧩 موضوعات تست‌ها", "menu:topics"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🌱 آموزه‌های زندگی", "menu:life-lessons"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🧭 نقشه راه من", "menu:roadmap"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👤 پروفایل من", "menu:profile"),
 			tgbotapi.NewInlineKeyboardButtonData("✨ درباره KnowMe", "menu:about"),
 		),
+	)
+}
+
+func lifeLessonsText(topics []store.TestCategory) string {
+	if len(topics) == 0 {
+		return "<b>🌱 آموزه‌های زندگی</b>\n\nفعلاً موضوعی منتشر نشده است."
+	}
+	return "<b>🌱 آموزه‌های زندگی</b>\n\nموضوع موردنظرت را انتخاب کن:"
+}
+
+func lifeLessonsKeyboard(topics []store.TestCategory) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(topics)+1)
+	for _, topic := range topics {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(topic.Title, fmt.Sprintf("life-topic:%d", topic.ID)),
+		))
+	}
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
+	))
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func lifeTopicText(title string) string {
+	return "<b>🌱 " + htmlEscape(title) + "</b>\n\nزیرموضوع را انتخاب کن:"
+}
+
+func lifeTopicsKeyboard(topics []testcatalog.Category) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(topics)+2)
+	for _, topic := range topics {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(topic.Title, fmt.Sprintf("life-topic:%d", topic.ID))))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("⬅️ موضوع‌های آموزه‌ها", "menu:life-lessons")),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home")),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func lifeLessonItemsText(lessons []store.LifeLesson) string {
+	if len(lessons) == 0 {
+		return "<b>🌱 آموزه‌های این موضوع</b>\n\nفعلاً آموزه‌ای در این موضوع منتشر نشده است."
+	}
+	return "<b>🌱 آموزه‌های این موضوع</b>\n\nبرای خواندن راهنما، یکی را انتخاب کن:"
+}
+
+func lifeLessonItemsKeyboard(lessons []store.LifeLesson) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(lessons)+2)
+	for _, lesson := range lessons {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(lesson.Title, fmt.Sprintf("life-lesson:%d", lesson.ID))))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("⬅️ موضوع‌های آموزه‌ها", "menu:life-lessons")),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home")),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func topicText(title string) string {
+	return "<b>🧩 " + htmlEscape(title) + "</b>\n\nزیرموضوع را انتخاب کن:"
+}
+
+func topicKeyboard(topics []testcatalog.Category) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(topics)+2)
+	for _, topic := range topics {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(topic.Title, fmt.Sprintf("topic:category:%d", topic.ID))))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("⬅️ موضوعات", "menu:topics")),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home")),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func lifeLessonText(lesson *store.LifeLesson) string {
+	return "🌱 <b>" + htmlEscape(lesson.Title) + "</b>\n" +
+		"━━━━━━━━━━━━━━\n" +
+		"<i>" + htmlEscape(lesson.Summary) + "</i>\n\n" +
+		"🎯 <b>هدف این آموزه</b>\n" + htmlEscape(lesson.Goal) + "\n\n" +
+		"🪞 <b>موضوع چیست؟</b>\n" + htmlEscape(lesson.Explanation) + "\n\n" +
+		"⚠️ <b>اگر نادیده‌اش بگیریم</b>\n" + htmlEscape(lesson.Consequences) + "\n\n" +
+		"👥 <b>مناسب چه سنی است؟</b>\n" + htmlEscape(lesson.AgeRange) + "\n\n" +
+		"🧭 <b>چه کارهایی می‌توانم انجام بدهم؟</b>\n" + htmlEscape(lesson.Method) + "\n\n" +
+		"🤝 <b>چه زمانی کمک بگیرم؟</b>\n" + htmlEscape(lesson.SeekHelp) + "\n\n" +
+		"💚 <b>یادت بماند</b>\n" + htmlEscape(lesson.KeyPoint)
+}
+
+func lifeLessonKeyboard() tgbotapi.InlineKeyboardMarkup {
+	return tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("⬅️ همه آموزه‌ها", "menu:life-lessons")),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home")),
 	)
 }
 
@@ -99,10 +194,16 @@ func categoryText(category *testcatalog.Category, tests []testcatalog.Test) stri
 func categoryKeyboard(tests []testcatalog.Test) tgbotapi.InlineKeyboardMarkup {
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, len(tests)+2)
 	for _, test := range tests {
+		callbackData := fmt.Sprintf("test:start:%d", test.ID)
+		label := test.Title
+		if !test.IsReady {
+			callbackData = fmt.Sprintf("test:info:%d", test.ID)
+			label = "📋 " + label
+		}
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData(
-				test.Title,
-				fmt.Sprintf("test:start:%d", test.ID),
+				label,
+				callbackData,
 			),
 		))
 	}
@@ -113,6 +214,35 @@ func categoryKeyboard(tests []testcatalog.Test) tgbotapi.InlineKeyboardMarkup {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home"),
 		),
+	)
+	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func testInfoText(test *testcatalog.Test) string {
+	text := "<b>" + htmlEscape(test.Title) + "</b>\n\n"
+	if test.Description != "" {
+		text += htmlEscape(test.Description) + "\n\n"
+	}
+	if test.IsReady {
+		return text + "این آزمون آماده‌ی اجراست."
+	}
+	return text + "<i>سؤال‌ها و نتیجه‌سنجی این آزمون هنوز در بات آماده نشده است.</i>"
+}
+
+func testInfoKeyboard(test *testcatalog.Test) tgbotapi.InlineKeyboardMarkup {
+	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
+	if test.IsReady {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("شروع آزمون", fmt.Sprintf("test:start:%d", test.ID)),
+		))
+	} else {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🕓 به‌زودی", fmt.Sprintf("test:soon:%d", test.ID)),
+		))
+	}
+	rows = append(rows,
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("⬅️ بازگشت به فهرست", fmt.Sprintf("topic:category:%d", test.CategoryID))),
+		tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("🏠 خانه", "menu:home")),
 	)
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

@@ -28,11 +28,13 @@ type UserProfile struct {
 func (UserProfile) TableName() string { return "UserProfiles" }
 
 type TestCategory struct {
-	ID        int64  `gorm:"column:Id;primaryKey;autoIncrement"`
-	Code      string `gorm:"column:Code;size:100;uniqueIndex;not null"`
-	Title     string `gorm:"column:Title;size:200;not null"`
-	SortOrder int    `gorm:"column:SortOrder;not null;default:0"`
-	IsActive  bool   `gorm:"column:IsActive;not null;default:true"`
+	ID          int64  `gorm:"column:Id;primaryKey;autoIncrement"`
+	Code        string `gorm:"column:Code;size:100;uniqueIndex;not null"`
+	Title       string `gorm:"column:Title;size:200;not null"`
+	ParentID    *int64 `gorm:"column:ParentId;index"`
+	CatalogType string `gorm:"column:CatalogType;size:30;not null;default:tests;index"`
+	SortOrder   int    `gorm:"column:SortOrder;not null;default:0"`
+	IsActive    bool   `gorm:"column:IsActive;not null;default:true"`
 }
 
 func (TestCategory) TableName() string { return "TestCategories" }
@@ -45,6 +47,7 @@ type Test struct {
 	Description *string   `gorm:"column:Description;size:1000"`
 	SortOrder   int       `gorm:"column:SortOrder;not null;default:0"`
 	IsActive    bool      `gorm:"column:IsActive;not null;default:true"`
+	IsReady     bool      `gorm:"column:IsReady;not null;default:true"`
 	CreatedAt   time.Time `gorm:"column:CreatedAt;autoCreateTime"`
 }
 
@@ -143,3 +146,23 @@ type UserEvent struct {
 }
 
 func (UserEvent) TableName() string { return "UserEvents" }
+
+type LifeLesson struct {
+	ID           int64  `gorm:"column:Id;primaryKey;autoIncrement"`
+	TopicID      int64  `gorm:"column:TopicId;not null;default:0;index"`
+	Code         string `gorm:"column:Code;size:100;uniqueIndex;not null"`
+	Title        string `gorm:"column:Title;size:250;not null"`
+	Summary      string `gorm:"column:Summary;size:500;not null"`
+	Goal         string `gorm:"column:Goal;not null;default:''"`
+	Explanation  string `gorm:"column:Explanation;not null;default:''"`
+	Consequences string `gorm:"column:Consequences;not null;default:''"`
+	AgeRange     string `gorm:"column:AgeRange;size:250;not null;default:''"`
+	Method       string `gorm:"column:Method;not null;default:''"`
+	SeekHelp     string `gorm:"column:SeekHelp;not null;default:''"`
+	KeyPoint     string `gorm:"column:KeyPoint;size:500;not null;default:''"`
+	Content      string `gorm:"column:Content;not null"`
+	SortOrder    int    `gorm:"column:SortOrder;not null;default:0"`
+	IsActive     bool   `gorm:"column:IsActive;not null;default:true"`
+}
+
+func (LifeLesson) TableName() string { return "LifeLessons" }

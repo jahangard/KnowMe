@@ -57,6 +57,11 @@ func (s *Service) Start(ctx context.Context, userID, testID int64) (*QuestionVie
 	}
 	defer tx.Rollback()
 
+	var test store.Test
+	if err := tx.Where("Id = ? AND IsActive = ? AND IsReady = ?", testID, true, true).First(&test).Error; err != nil {
+		return nil, fmt.Errorf("load runnable test: %w", err)
+	}
+
 	var session store.TestSession
 	err := tx.
 		Where("UserId = ? AND TestId = ? AND Status = ?", userID, testID, "active").

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowMe design QA comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 30px; background: #f2f0f5; color: #272230; font: 14px/1.5 sans-serif; }
+      main { display: flex; align-items: flex-start; gap: 28px; width: max-content; margin: 0 auto; }
+      figure { display: grid; gap: 10px; margin: 0; }
+      figcaption { font-weight: 700; }
+      .comparison-image { width: 393px; height: 852px; background: #100c19; object-fit: cover; object-position: center; }
+      iframe { display: block; width: 393px; height: 852px; border: 0; background: #100c19; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <figure>
+        <figcaption>طرح منتخب · تصویر اصلی</figcaption>
+        <img class="comparison-image" src="/design/selected-option-3.png" alt="طرح منتخب KnowMe" />
+      </figure>
+      <figure>
+        <figcaption>پیاده‌سازی · صفحه خانه</figcaption>
+        <iframe id="app-preview" src="/" title="پیش‌نمایش KnowMe"></iframe>
+      </figure>
+    </main>
+    <script>
+      const preview = document.querySelector("#app-preview");
+      preview.addEventListener("load", () => {
+        const doc = preview.contentDocument;
+        const style = doc.createElement("style");
+        style.textContent = `
+          html, body, #root, .phone-stage { width: 393px !important; height: 852px !important; min-width: 393px !important; min-height: 852px !important; padding: 0 !important; margin: 0 !important; overflow: hidden !important; }
+          .phone-stage { display: block !important; position: relative !important; }
+          .phone-scale-box { position: absolute !important; left: 0 !important; top: 0 !important; width: 393px !important; height: 852px !important; }
+          .phone-device { left: -59px !important; top: -58px !important; transform: translate(0, 0) scale(1) !important; }
+          .phone-bezel, .device-camera, .device-menu-bar, .status-bar, .home-indicator-svg { display: none !important; }
+          .device-screen { border-radius: 0 !important; }
+        `;
+        doc.head.append(style);
+      });
+    </script>
+  </body>
+</html>

@@ -35,7 +35,7 @@ func (s *Service) NextTest(ctx context.Context, userID int64) (*Recommendation, 
 
 	query := s.db.WithContext(ctx).
 		Model(&store.Test{}).
-		Where("IsActive = ?", true).
+		Where("IsActive = ? AND IsReady = ?", true, true).
 		Order("SortOrder ASC").
 		Order("Id ASC")
 	if len(completedTestIDs) > 0 {

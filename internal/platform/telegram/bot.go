@@ -134,6 +134,13 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		return err
 	}
 
+	if strings.HasPrefix(callback.Data, "test:soon:") {
+		answer := tgbotapi.NewCallback(callback.ID, "سؤال‌های این آزمون به‌زودی آماده می‌شوند.")
+		answer.ShowAlert = true
+		_, err := b.api.Request(answer)
+		return err
+	}
+
 	if _, err := b.api.Request(tgbotapi.NewCallback(callback.ID, "")); err != nil {
 		b.logger.Warn("callback answer failed", "error", err)
 	}
@@ -146,6 +153,8 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		return b.sendHome(chatID)
 	case "menu:topics":
 		return b.showTopics(ctx, chatID, messageID)
+	case "menu:life-lessons":
+		return b.showLifeLessons(ctx, chatID, messageID)
 	case "menu:roadmap":
 		return b.sendRoadmapGuarded(ctx, userID, chatID)
 	case "menu:profile":
@@ -164,6 +173,23 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 		return b.editHTML(chatID, messageID, homeText(), homeKeyboard())
 	}
 
+	if strings.HasPrefix(callback.Data, "life-lesson:") {
+		rawID := strings.TrimPrefix(callback.Data, "life-lesson:")
+		lessonID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid life lesson id: %w", err)
+		}
+		return b.showLifeLesson(ctx, chatID, messageID, lessonID)
+	}
+	if strings.HasPrefix(callback.Data, "life-topic:") {
+		rawID := strings.TrimPrefix(callback.Data, "life-topic:")
+		topicID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid life lesson topic id: %w", err)
+		}
+		return b.showLifeTopic(ctx, chatID, messageID, topicID)
+	}
+
 	if strings.HasPrefix(callback.Data, "topic:category:") {
 		rawID := strings.TrimPrefix(callback.Data, "topic:category:")
 		categoryID, err := strconv.ParseInt(rawID, 10, 64)
@@ -171,6 +197,21 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 			return fmt.Errorf("invalid category id: %w", err)
 		}
 		return b.showCategory(ctx, userID, chatID, messageID, categoryID)
+	}
+	if strings.HasPrefix(callback.Data, "test:info:") {
+		rawID := strings.TrimPrefix(callback.Data, "test:info:")
+		testID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid test id: %w", err)
+		}
+		test, err := b.catalog.Test(ctx, testID)
+		if err != nil {
+			return err
+		}
+		if test == nil {
+			return b.editHTML(chatID, messageID, "<b>این آزمون پیدا نشد.</b>", homeKeyboard())
+		}
+		return b.editHTML(chatID, messageID, testInfoText(test), testInfoKeyboard(test))
 	}
 
 	if strings.HasPrefix(callback.Data, "profile:gender:") {
@@ -187,14 +228,23 @@ func (b *Bot) handleCallback(ctx context.Context, callback *tgbotapi.CallbackQue
 	}
 
 	if strings.HasPrefix(callback.Data, "test:start:") {
-		if ok, err := b.baseProfileComplete(ctx, userID, chatID); err != nil || !ok {
-			return err
-		}
-
 		rawID := strings.TrimPrefix(callback.Data, "test:start:")
 		testID, err := strconv.ParseInt(rawID, 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid test id: %w", err)
+		}
+		test, err := b.catalog.Test(ctx, testID)
+		if err != nil {
+			return err
+		}
+		if test == nil {
+			return b.editHTML(chatID, messageID, "<b>این آزمون پیدا نشد.</b>", homeKeyboard())
+		}
+		if !test.IsReady {
+			return b.editHTML(chatID, messageID, testInfoText(test), testInfoKeyboard(test))
+		}
+		if ok, err := b.baseProfileComplete(ctx, userID, chatID); err != nil || !ok {
+			return err
 		}
 
 		view, err := b.testEngine.Start(ctx, userID, testID)
@@ -424,6 +474,48 @@ func (b *Bot) showTopics(ctx context.Context, chatID int64, messageID int) error
 	return b.editHTML(chatID, messageID, topicsText(), topicsKeyboard(categories))
 }
 
+func (b *Bot) showLifeLessons(ctx context.Context, chatID int64, messageID int) error {
+	var topics []store.TestCategory
+	if err := b.db.WithContext(ctx).Where("CatalogType = ? AND ParentId IS NULL AND IsActive = ?", "lessons", true).Order("SortOrder ASC, Id ASC").Find(&topics).Error; err != nil {
+		return fmt.Errorf("load life lesson topics: %w", err)
+	}
+	return b.editHTML(chatID, messageID, lifeLessonsText(topics), lifeLessonsKeyboard(topics))
+}
+
+func (b *Bot) showLifeTopic(ctx context.Context, chatID int64, messageID int, topicID int64) error {
+	topic, err := b.catalog.Category(ctx, topicID)
+	if err != nil {
+		return err
+	}
+	if topic == nil || topic.CatalogType != "lessons" {
+		return b.editHTML(chatID, messageID, "<b>این موضوع پیدا نشد.</b>", lifeLessonKeyboard())
+	}
+	children, err := b.catalog.Children(ctx, topicID, "lessons")
+	if err != nil {
+		return err
+	}
+	if len(children) > 0 {
+		return b.editHTML(chatID, messageID, lifeTopicText(topic.Title), lifeTopicsKeyboard(children))
+	}
+	var lessons []store.LifeLesson
+	if err := b.db.WithContext(ctx).Where("TopicId = ? AND IsActive = ?", topicID, true).Order("SortOrder ASC, Id ASC").Find(&lessons).Error; err != nil {
+		return fmt.Errorf("load lessons for topic: %w", err)
+	}
+	return b.editHTML(chatID, messageID, lifeLessonItemsText(lessons), lifeLessonItemsKeyboard(lessons))
+}
+
+func (b *Bot) showLifeLesson(ctx context.Context, chatID int64, messageID int, lessonID int64) error {
+	var lesson store.LifeLesson
+	err := b.db.WithContext(ctx).Where("Id = ? AND IsActive = ?", lessonID, true).First(&lesson).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return b.editHTML(chatID, messageID, "<b>این آموزه پیدا نشد.</b>", lifeLessonKeyboard())
+	}
+	if err != nil {
+		return fmt.Errorf("load life lesson: %w", err)
+	}
+	return b.editHTML(chatID, messageID, lifeLessonText(&lesson), lifeLessonKeyboard())
+}
+
 func (b *Bot) showCategory(ctx context.Context, userID, chatID int64, messageID int, categoryID int64) error {
 	category, err := b.catalog.Category(ctx, categoryID)
 	if err != nil {
@@ -446,6 +538,13 @@ func (b *Bot) showCategory(ctx context.Context, userID, chatID int64, messageID 
 	tests, err := b.catalog.Tests(ctx, categoryID)
 	if err != nil {
 		return err
+	}
+	children, err := b.catalog.Children(ctx, categoryID, "tests")
+	if err != nil {
+		return err
+	}
+	if len(children) > 0 {
+		return b.editHTML(chatID, messageID, topicText(category.Title), topicKeyboard(children))
 	}
 	return b.editHTML(chatID, messageID, categoryText(category, tests), categoryKeyboard(tests))
 }

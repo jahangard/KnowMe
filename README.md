@@ -17,6 +17,19 @@ Telegram-based adaptive quiz engine with a data-driven test catalog.
 - Event Tracking
 - Structured logging
 
+## Telegram Mini App prototype
+
+A mobile-first Persian Mini App prototype lives in [`telegram-mini-app/`](telegram-mini-app/README.md). It follows KnowMe's current quiz catalog and Telegram UX, including the 18+ gate, roadmap, profile, and an end-to-end sample of «سبک عشق‌ورزی».
+
+Run the preview from that directory:
+
+```bash
+npm ci
+npm run dev -- --host 0.0.0.0 --port 4173
+```
+
+The prototype uses Telegram Web App APIs when Telegram provides them. Its catalog and answers are currently local demo data; connecting it to the Go services requires a public HTTPS Mini App URL, server-side Telegram `initData` validation, and API endpoints for catalog, profile, sessions, and results.
+
 ## Current product flow
 
 ```text

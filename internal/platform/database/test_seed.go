@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type resultSeed struct {
@@ -65,15 +67,40 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 
 	description := definition.Description
 	var test Test
-	if err := tx.Where("Code = ?", definition.Code).
-		FirstOrCreate(&test, Test{
+	if err := tx.Where("Code = ?", definition.Code).Take(&test).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			return err
+		}
+		test = Test{
 			CategoryID:  category.ID,
 			Code:        definition.Code,
-			Title:       definition.Title,
+			Title:       stripEmoji(definition.Title),
 			Description: &description,
 			SortOrder:   definition.SortOrder,
 			IsActive:    true,
-		}).Error; err != nil {
+			IsReady:     true,
+		}
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "Code"}}, DoNothing: true}).Create(&test).Error; err != nil {
+			return err
+		}
+		// Another process may have inserted the same code after the lookup.
+		// Reload by the unique key so later child rows use the canonical ID.
+		if test.ID == 0 {
+			if err := tx.Where("Code = ?", definition.Code).Take(&test).Error; err != nil {
+				return err
+			}
+		}
+	} else if err != nil {
+		return err
+	}
+	if err := tx.Model(&Test{}).Where("Id = ?", test.ID).Updates(map[string]any{
+		"CategoryId":  category.ID,
+		"Title":       stripEmoji(definition.Title),
+		"Description": description,
+		"SortOrder":   definition.SortOrder,
+		"IsActive":    true,
+		"IsReady":     true,
+	}).Error; err != nil {
 		return err
 	}
 
@@ -82,7 +109,7 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 			TestID:      test.ID,
 			TraitKey:    seed.TraitKey,
 			Label:       seed.Label,
-			Title:       seed.Title,
+			Title:       stripEmoji(seed.Title),
 			Subtitle:    seed.Subtitle,
 			Description: seed.Description,
 			SortOrder:   seed.SortOrder,
@@ -92,6 +119,7 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 			row.SortOrder = resultIndex + 1
 		}
 		if err := tx.Where("TestId = ? AND TraitKey = ?", test.ID, seed.TraitKey).
+			Assign(map[string]any{"Label": row.Label, "Title": row.Title, "Subtitle": row.Subtitle, "Description": row.Description, "SortOrder": row.SortOrder, "IsActive": true}).
 			FirstOrCreate(&row).Error; err != nil {
 			return err
 		}
@@ -133,9 +161,25 @@ func upsertTestDefinition(tx *gorm.DB, definition testSeedDefinition) error {
 	return nil
 }
 
+// stripEmoji removes pictographs from titles so database labels stay semantic;
+// presentation layers can add their own icons when needed.
+func stripEmoji(value string) string {
+	var cleaned strings.Builder
+	for _, r := range value {
+		if (r >= 0x1F000 && r <= 0x1FAFF) ||
+			(r >= 0x2600 && r <= 0x27BF) ||
+			(r >= 0xFE00 && r <= 0xFE0F) ||
+			r == 0x200D || r == 0xFE0F {
+			continue
+		}
+		cleaned.WriteRune(r)
+	}
+	return strings.TrimSpace(cleaned.String())
+}
+
 func loveStyleSeed() testSeedDefinition {
 	return testSeedDefinition{
-		CategoryCode: "love",
+		CategoryCode: "love-style",
 		Code:         "love_style_v1",
 		Title:        "💞 سبک عشق‌ورزی",
 		Description:  "شیوه غالب ابراز علاقه و دریافت محبتت را پیدا کن.",
@@ -252,7 +296,7 @@ func loveStyleSeed() testSeedDefinition {
 
 func attractionStyleSeed() testSeedDefinition {
 	return testSeedDefinition{
-		CategoryCode: "love",
+		CategoryCode: "love-style",
 		Code:         "attraction_style_v1",
 		Title:        "✨ تیپ جذابیت",
 		Description:  "ببین جذابیت تو بیشتر از چه جنسیه؛ حضور، گرما، رازآلودگی یا انرژی.",
@@ -369,7 +413,7 @@ func attractionStyleSeed() testSeedDefinition {
 
 func datingScenariosSeed() testSeedDefinition {
 	return testSeedDefinition{
-		CategoryCode: "love",
+		CategoryCode: "love-dating",
 		Code:         "dating_scenarios_v1",
 		Title:        "💘 سناریوهای قرار",
 		Description:  "در موقعیت‌های واقعی قرار و آشنایی، غریزه تو چطور تصمیم می‌گیره؟",
@@ -487,7 +531,7 @@ func datingScenariosSeed() testSeedDefinition {
 
 func personalBoundariesSeed() testSeedDefinition {
 	return testSeedDefinition{
-		CategoryCode: "love",
+		CategoryCode: "love-boundaries",
 		Code:         "personal_boundaries_v1",
 		Title:        "🛡 مرزهای شخصی",
 		Description:  "ببین وقتی پای نه گفتن، احترام و فضای شخصی وسطه، سبک تو چیه.",
@@ -605,7 +649,7 @@ func personalBoundariesSeed() testSeedDefinition {
 
 func bitterTruthSeed() testSeedDefinition {
 	return testSeedDefinition{
-		CategoryCode: "challenge",
+		CategoryCode: "challenge-truth",
 		Code:         "bitter_truth_v1",
 		Title:        "🪞 حقیقت تلخ",
 		Description:  "یک تست چالشی برای پیدا کردن الگویی که شاید درباره خودت کمتر دوست داشته باشی ببینی.",

@@ -1,5 +1,20 @@
 # KnowMe Change Log
 
+## 2026-10-07 — Telegram Mini App prototype
+
+### Product experience
+
+- Added a standalone mobile-first Persian RTL Mini App prototype under `telegram-mini-app/`.
+- Added home, topic, category, roadmap, profile, quiz, result, and age-gate screens in KnowMe's dark plum and mint visual direction.
+- The eight «سبک عشق‌ورزی» questions, answer options, and result profiles mirror the current Go seed content.
+- Added Telegram Web App lifecycle, back-button, and haptic integration for use inside Telegram.
+- Other catalog tests are visible but remain unavailable in the standalone preview; answers and profiles are not persisted to the Go backend.
+
+### Production follow-up
+
+- Add a public HTTPS launch URL and Telegram Web App entry point in the bot.
+- Add backend endpoints and signed `initData` validation before using the Mini App with real user data or age-restricted content.
+
 ## 2026-10-07 — Data-driven Quiz Platform
 
 ### Product
